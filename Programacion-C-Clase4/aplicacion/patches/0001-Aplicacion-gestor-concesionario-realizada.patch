@@ -1,0 +1,1577 @@
+From 9eb15ac749024c248844c325f09ab389b60ab214 Mon Sep 17 00:00:00 2001
+From: Guille de la Cruz Dorado <guille.informatica.sevilla@gmail.com>
+Date: Thu, 26 Mar 2015 16:35:28 +0100
+Subject: [PATCH] [CURSO C] Aplicacion gestor concesionario realizada
+
+Realizar una aplicacion de ventana para gestor_concesionario
+
+Realizada la aplicacion, implementando gtk, parametros de entrada y ficheros
+
+Signed-off-by: Guille de la Cruz Dorado <guille.informatica.sevilla@gmail.com>
+---
+ aplicacion/files/Guille.conc       |   4 +
+ aplicacion/include/coche.h         |  44 ++++
+ aplicacion/include/concesionario.h |  40 +++
+ aplicacion/include/list.h          | 244 ++++++++++++++++++
+ aplicacion/src/aplicacion          | Bin 0 -> 35098 bytes
+ aplicacion/src/coche.c             | 124 +++++++++
+ aplicacion/src/concesionario.c     | 305 ++++++++++++++++++++++
+ aplicacion/src/main.c              | 501 +++++++++++++++++++++++++++++++++++++
+ 8 files changed, 1262 insertions(+)
+ create mode 100644 aplicacion/files/Guille.conc
+ create mode 100644 aplicacion/include/coche.h
+ create mode 100644 aplicacion/include/concesionario.h
+ create mode 100644 aplicacion/include/list.h
+ create mode 100755 aplicacion/src/aplicacion
+ create mode 100644 aplicacion/src/coche.c
+ create mode 100644 aplicacion/src/concesionario.c
+ create mode 100644 aplicacion/src/main.c
+
+diff --git a/aplicacion/files/Guille.conc b/aplicacion/files/Guille.conc
+new file mode 100644
+index 0000000..8f9b5df
+--- /dev/null
++++ b/aplicacion/files/Guille.conc
+@@ -0,0 +1,4 @@
++Guille
++2,noquemas,aleatorio
++5,opjki,jiok
++6,:D,^_^
+diff --git a/aplicacion/include/coche.h b/aplicacion/include/coche.h
+new file mode 100644
+index 0000000..a62d649
+--- /dev/null
++++ b/aplicacion/include/coche.h
+@@ -0,0 +1,44 @@
++#include <stdio.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <stdbool.h>
++#include <string.h>
++#include "list.h"
++
++enum {
++	CURSO_COCHE_ATTR_MARCA,
++	CURSO_COCHE_ATTR_MATRICULA,
++	CURSO_COCHE_ATTR_ID,
++	__CURSO_COCHE_ATTR_MAX
++};
++
++#define CURSO_COCHE_ATTR_MAX (__CURSO_COCHE_ATTR_MAX - 1)
++
++#define xfree(ptr)      free((void *)ptr);
++
++struct coche {
++	struct list_head	head;
++	uint32_t		id;
++	const char      	*matricula;
++	const char		*marca;
++
++	uint32_t		flags;
++};
++
++struct coche *curso_coche_alloc(void);
++void curso_coche_free(struct coche *);
++
++bool curso_coche_attr_is_set(const struct coche *c, uint16_t attr);
++
++void curso_coche_attr_unset(struct coche *c, uint16_t attr);
++
++void curso_coche_attr_set_data(struct coche *c, uint16_t attr, const void *data,
++			       uint32_t data_len);
++void curso_coche_attr_set_u32(struct coche *c, uint16_t attr, uint32_t data);
++void curso_coche_attr_set_str(struct coche *c, uint16_t attr, const char *data);
++
++const void *curso_coche_attr_get_data(struct coche *c, uint16_t attr);
++uint32_t curso_coche_attr_get_u32(struct coche *c, uint16_t attr);
++const char *curso_coche_attr_get_str(struct coche *c, uint16_t attr);
++
++int curso_coche_snprintf(char *buf, size_t size, struct coche *c);
+diff --git a/aplicacion/include/concesionario.h b/aplicacion/include/concesionario.h
+new file mode 100644
+index 0000000..e46d62f
+--- /dev/null
++++ b/aplicacion/include/concesionario.h
+@@ -0,0 +1,40 @@
++#include "coche.h"
++
++enum {
++	CURSO_CONCESIONARIO_ATTR_COCHE,
++	CURSO_CONCESIONARIO_ATTR_DUENO,
++	CURSO_CONCESIONARIO_ATTR_NUM_COCHES,
++	__CURSO_CONCESIONARIO_ATTR_MAX
++};
++
++#define CURSO_CONCESIONARIO_ATTR_MAX (__CURSO_CONCESIONARIO_ATTR_MAX - 1)
++
++struct concesionario;
++
++struct concesionario *curso_concesionario_alloc(void);
++void curso_concesionario_free(struct concesionario *);
++
++void curso_concesionario_attr_unset_coche(struct concesionario *con,
++					  uint32_t pos);
++
++void curso_concesionario_attr_set_str(struct concesionario *con, uint16_t attr,
++				      const char *data);
++void curso_concesionario_attr_set_coche(struct concesionario *con,
++					uint16_t attr, struct coche *c);
++
++uint32_t curso_concesionario_attr_get_u32(struct concesionario *con,
++					  uint16_t attr);
++const char *curso_concesionario_attr_get_str(struct concesionario *con,
++					     uint16_t attr);
++struct coche *curso_concesionario_attr_get_coche(struct concesionario *con,
++						 uint16_t attr, uint32_t pos);
++
++int curso_concesionario_snprintf(char *buf, size_t size,
++				struct concesionario *c);
++
++const void *curso_concesionario_write_coches(struct concesionario *con,
++                                        FILE *file);
++
++void read_file_to_concesionario(const char *file, struct concesionario *con);
++void write_concesionario_to_file(const char *file,
++                                 struct concesionario *con);
+diff --git a/aplicacion/include/list.h b/aplicacion/include/list.h
+new file mode 100644
+index 0000000..3a76885
+--- /dev/null
++++ b/aplicacion/include/list.h
+@@ -0,0 +1,244 @@
++#ifndef __LIST_H
++#define __LIST_H
++
++/* This file is from Linux Kernel (include/linux/list.h) 
++ * and modified by simply removing hardware prefetching of list items. 
++ * Here by copyright, credits attributed to wherever they belong.
++ * Kulesh Shanmugasundaram (kulesh [squiggly] isis.poly.edu)
++ */
++
++/*
++ * Simple doubly linked list implementation.
++ *
++ * Some of the internal functions ("__xxx") are useful when
++ * manipulating whole lists rather than single entries, as
++ * sometimes we already know the next/prev entries and we can
++ * generate better code by using them directly rather than
++ * using the generic single-entry routines.
++ */
++
++struct list_head {
++	struct list_head *next, *prev;
++};
++
++#define LIST_HEAD_INIT(name) { &(name), &(name) }
++
++#define LIST_HEAD(name) \
++	struct list_head name = LIST_HEAD_INIT(name)
++
++#define INIT_LIST_HEAD(ptr) do { \
++	(ptr)->next = (ptr); (ptr)->prev = (ptr); \
++} while (0)
++
++/*
++ * Insert a new entry between two known consecutive entries. 
++ *
++ * This is only for internal list manipulation where we know
++ * the prev/next entries already!
++ */
++static inline void __list_add(struct list_head *new,
++			      struct list_head *prev,
++			      struct list_head *next)
++{
++	next->prev = new;
++	new->next = next;
++	new->prev = prev;
++	prev->next = new;
++}
++
++/**
++ * list_add - add a new entry
++ * @new: new entry to be added
++ * @head: list head to add it after
++ *
++ * Insert a new entry after the specified head.
++ * This is good for implementing stacks.
++ */
++static inline void list_add(struct list_head *new, struct list_head *head)
++{
++	__list_add(new, head, head->next);
++}
++
++/**
++ * list_add_tail - add a new entry
++ * @new: new entry to be added
++ * @head: list head to add it before
++ *
++ * Insert a new entry before the specified head.
++ * This is useful for implementing queues.
++ */
++static inline void list_add_tail(struct list_head *new, struct list_head *head)
++{
++	__list_add(new, head->prev, head);
++}
++
++/*
++ * Delete a list entry by making the prev/next entries
++ * point to each other.
++ *
++ * This is only for internal list manipulation where we know
++ * the prev/next entries already!
++ */
++static inline void __list_del(struct list_head *prev, struct list_head *next)
++{
++	next->prev = prev;
++	prev->next = next;
++}
++
++/**
++ * list_del - deletes entry from list.
++ * @entry: the element to delete from the list.
++ * Note: list_empty on entry does not return true after this, the entry is in an undefined state.
++ */
++static inline void list_del(struct list_head *entry)
++{
++	__list_del(entry->prev, entry->next);
++	entry->next = (void *) 0;
++	entry->prev = (void *) 0;
++}
++
++/**
++ * list_del_init - deletes entry from list and reinitialize it.
++ * @entry: the element to delete from the list.
++ */
++static inline void list_del_init(struct list_head *entry)
++{
++	__list_del(entry->prev, entry->next);
++	INIT_LIST_HEAD(entry); 
++}
++
++/**
++ * list_move - delete from one list and add as another's head
++ * @list: the entry to move
++ * @head: the head that will precede our entry
++ */
++static inline void list_move(struct list_head *list, struct list_head *head)
++{
++        __list_del(list->prev, list->next);
++        list_add(list, head);
++}
++
++/**
++ * list_move_tail - delete from one list and add as another's tail
++ * @list: the entry to move
++ * @head: the head that will follow our entry
++ */
++static inline void list_move_tail(struct list_head *list,
++				  struct list_head *head)
++{
++        __list_del(list->prev, list->next);
++        list_add_tail(list, head);
++}
++
++/**
++ * list_empty - tests whether a list is empty
++ * @head: the list to test.
++ */
++static inline int list_empty(struct list_head *head)
++{
++	return head->next == head;
++}
++
++static inline void __list_splice(struct list_head *list,
++				 struct list_head *head)
++{
++	struct list_head *first = list->next;
++	struct list_head *last = list->prev;
++	struct list_head *at = head->next;
++
++	first->prev = head;
++	head->next = first;
++
++	last->next = at;
++	at->prev = last;
++}
++
++/**
++ * list_splice - join two lists
++ * @list: the new list to add.
++ * @head: the place to add it in the first list.
++ */
++static inline void list_splice(struct list_head *list, struct list_head *head)
++{
++	if (!list_empty(list))
++		__list_splice(list, head);
++}
++
++/**
++ * list_splice_init - join two lists and reinitialise the emptied list.
++ * @list: the new list to add.
++ * @head: the place to add it in the first list.
++ *
++ * The list at @list is reinitialised
++ */
++static inline void list_splice_init(struct list_head *list,
++				    struct list_head *head)
++{
++	if (!list_empty(list)) {
++		__list_splice(list, head);
++		INIT_LIST_HEAD(list);
++	}
++}
++
++/**
++ * list_entry - get the struct for this entry
++ * @ptr:	the &struct list_head pointer.
++ * @type:	the type of the struct this is embedded in.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_entry(ptr, type, member) \
++	((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
++
++/**
++ * list_for_each	-	iterate over a list
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ */
++#define list_for_each(pos, head) \
++	for (pos = (head)->next; pos != (head); \
++        	pos = pos->next)
++/**
++ * list_for_each_prev	-	iterate over a list backwards
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ */
++#define list_for_each_prev(pos, head) \
++	for (pos = (head)->prev; pos != (head); \
++        	pos = pos->prev)
++        	
++/**
++ * list_for_each_safe	-	iterate over a list safe against removal of list entry
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @n:		another &struct list_head to use as temporary storage
++ * @head:	the head for your list.
++ */
++#define list_for_each_safe(pos, n, head) \
++	for (pos = (head)->next, n = pos->next; pos != (head); \
++		pos = n, n = pos->next)
++
++/**
++ * list_for_each_entry	-	iterate over list of given type
++ * @pos:	the type * to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry(pos, head, member)				\
++	for (pos = list_entry((head)->next, typeof(*pos), member);	\
++	     &pos->member != (head); 					\
++	     pos = list_entry(pos->member.next, typeof(*pos), member))
++
++/**
++ * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
++ * @pos:	the type * to use as a loop counter.
++ * @n:		another type * to use as temporary storage
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry_safe(pos, n, head, member)			\
++	for (pos = list_entry((head)->next, typeof(*pos), member),	\
++		n = list_entry(pos->member.next, typeof(*pos), member);	\
++	     &pos->member != (head); 					\
++	     pos = n, n = list_entry(n->member.next, typeof(*n), member))
++
++
++#endif
+diff --git a/aplicacion/src/aplicacion b/aplicacion/src/aplicacion
+new file mode 100755
+index 0000000000000000000000000000000000000000..a1767925add58018823cee7848aceb57c03d9ebf
+GIT binary patch
+literal 35098
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/aplicacion/src/coche.c b/aplicacion/src/coche.c
+new file mode 100644
+index 0000000..56d9286
+--- /dev/null
++++ b/aplicacion/src/coche.c
+@@ -0,0 +1,124 @@
++#include "../include/coche.h"
++
++struct coche *curso_coche_alloc(void)
++{
++	struct coche *c = (struct coche *)malloc(sizeof(struct coche));
++
++	c->id = 0;
++	c->marca = NULL;
++	c->matricula = NULL;
++	c->flags = 0;
++
++	return c;
++}
++
++void curso_coche_free(struct coche *c)
++{
++	if (c->flags & (1 << CURSO_COCHE_ATTR_MARCA))
++		xfree(c->marca);
++
++	if (c->flags & (1 << CURSO_COCHE_ATTR_MATRICULA))
++		xfree(c->matricula);
++
++	xfree(c);
++}
++
++bool curso_coche_attr_is_set(const struct coche *c, uint16_t attr)
++{
++	return c->flags & (1 << attr);
++}
++
++void curso_coche_attr_unset(struct coche *c, uint16_t attr)
++{
++	if (!(c->flags & (1 << attr)))
++		return;
++
++	switch (attr) {
++	case CURSO_COCHE_ATTR_MARCA:
++		if (c->marca) {
++			xfree(c->marca);
++			c->marca = NULL;
++		}
++		break;
++	case CURSO_COCHE_ATTR_MATRICULA:
++		if (c->matricula) {
++			xfree(c->matricula);
++			c->matricula = NULL;
++		}
++		break;
++	case CURSO_COCHE_ATTR_ID:
++		break;
++	}
++
++	c->flags &= ~(1 << attr);
++}
++
++void curso_coche_set_data(struct coche *c, uint16_t attr, const void *data,
++			  uint32_t data_len)
++{
++	if (attr > CURSO_COCHE_ATTR_MAX)
++		return;
++
++	switch (attr) {
++	case CURSO_COCHE_ATTR_MARCA:
++		if (c->marca)
++			xfree(c->marca);
++
++		c->marca = strdup(data);
++		break;
++	case CURSO_COCHE_ATTR_MATRICULA:
++		if (c->matricula)
++			xfree(c->matricula);
++
++		c->matricula = strdup(data);
++		break;
++	case CURSO_COCHE_ATTR_ID:
++		c->id = *((uint32_t *)data);
++		break;
++	}
++
++	c->flags |= (1 << attr);
++}
++
++void curso_coche_attr_set_u32(struct coche *c, uint16_t attr, uint32_t data)
++{
++	curso_coche_set_data(c, attr, &data, sizeof(uint32_t));
++}
++
++void curso_coche_attr_set_str(struct coche *c, uint16_t attr, const char *data)
++{
++	curso_coche_set_data(c, attr, data, 0);
++}
++
++const void *curso_coche_attr_get_data(struct coche *c, uint16_t attr)
++{
++	if (!(c->flags & (1 << attr)))
++		return NULL;
++
++	switch(attr) {
++	case CURSO_COCHE_ATTR_MARCA:
++		return c->marca;
++	case CURSO_COCHE_ATTR_MATRICULA:
++		return c->matricula;
++	case CURSO_COCHE_ATTR_ID:
++		return &c->id;
++	}
++	return NULL;
++}
++
++uint32_t curso_coche_attr_get_u32(struct coche *c, uint16_t attr)
++{
++	const void *ret = curso_coche_attr_get_data(c, attr);
++	return ret == NULL ? 0 : *((uint32_t *)ret);
++}
++
++const char *curso_coche_attr_get_str(struct coche *c, uint16_t attr)
++{
++	return curso_coche_attr_get_data(c, attr);
++}
++
++int curso_coche_snprintf(char *buf, size_t size, struct coche *c)
++{
++	return snprintf(buf, size, "matricula %s marca %s id %d",
++			c->matricula, c->marca, c->id);
++}
+diff --git a/aplicacion/src/concesionario.c b/aplicacion/src/concesionario.c
+new file mode 100644
+index 0000000..ead47db
+--- /dev/null
++++ b/aplicacion/src/concesionario.c
+@@ -0,0 +1,305 @@
++#include "../include/concesionario.h"
++#include <string.h>
++
++int nextAttr(FILE *f, char *cadena)
++{
++        int pos;
++        char ch = fgetc(f);
++
++        for (pos = 0; ch != '\n' && ch > 0 && pos < 50 && ch != ','; pos++){
++                cadena[pos] = ch;
++                ch = fgetc(f);
++        }
++        cadena[pos] = '\0';
++
++        return pos;
++}
++
++
++struct concesionario {
++	struct list_head	garaje;
++	const char		*dueno;
++	uint32_t		num_coches;
++
++	uint32_t		flags;
++};
++
++struct concesionario *curso_concesionario_alloc(void)
++{
++	struct concesionario *con;
++	char *d = "Ningun dueño asignador";
++	con = (struct concesionario *)malloc(sizeof(struct concesionario));
++	if (con ==  NULL)
++		return NULL;
++
++	INIT_LIST_HEAD(&con->garaje);
++	con->num_coches = 0;
++	con->dueno = strdup(d);
++	con->flags = 0;
++
++	con->flags |= 1 << CURSO_CONCESIONARIO_ATTR_NUM_COCHES;
++
++	return con;
++}
++
++void curso_concesionario_free(struct concesionario *con)
++{
++	struct coche *c, *tmp;
++
++	if (con->flags & (1 << CURSO_CONCESIONARIO_ATTR_DUENO))
++		xfree(con->dueno);
++
++	list_for_each_entry_safe(c, tmp, &con->garaje, head) {
++		list_del(&c->head);
++		curso_coche_free(c);
++	}
++
++	xfree(con);
++}
++
++void curso_concesionario_attr_unset_coche(struct concesionario *con,
++					  uint32_t pos)
++{
++	int i = 0;
++	struct coche *c, *tmp;
++
++	if (pos < 0 || pos > con->num_coches)
++		return;
++
++	list_for_each_entry_safe(c, tmp, &con->garaje, head) {
++		if (i == pos) {
++			list_del(&c->head);
++			curso_coche_free(c);
++			break;
++		}
++
++		i++;
++	}
++
++	con->num_coches--;
++}
++
++static void curso_concesionario_set_data(struct concesionario *con,
++					 uint16_t attr, const void *data)
++{
++	struct coche *c;
++
++	if (attr > CURSO_CONCESIONARIO_ATTR_MAX)
++		return;
++
++	switch (attr) {
++	case CURSO_CONCESIONARIO_ATTR_DUENO:
++		if (con->dueno)
++			xfree(con->dueno);
++
++		con->dueno = strdup(data);
++		break;
++	case CURSO_CONCESIONARIO_ATTR_COCHE:
++		if (con->num_coches > 50) {
++			printf("El garaje esta lleno\n");
++			break;
++		}
++		c = (struct coche *)data;
++		list_add_tail(&c->head, &con->garaje);
++		con->num_coches++;
++		break;
++	}
++
++	con->flags |= (1 << attr);
++}
++
++void curso_concesionario_attr_set_str(struct concesionario *con,
++					uint16_t attr, const char *data)
++{
++	curso_concesionario_set_data(con, attr, data);
++}
++
++void curso_concesionario_attr_set_coche(struct concesionario *con,
++					  uint16_t attr, struct coche *data)
++{
++	curso_concesionario_set_data(con, attr, data);
++}
++
++const void *curso_concesionario_attr_get_data(struct concesionario *con,
++					      uint16_t attr, uint32_t pos)
++{
++	int i = 0;
++	struct coche *c;
++
++	if (!(con->flags & (1 << attr)))
++		return NULL;
++
++	switch(attr) {
++	case CURSO_CONCESIONARIO_ATTR_DUENO:
++		return con->dueno;
++	case CURSO_CONCESIONARIO_ATTR_NUM_COCHES:
++		return &con->num_coches;
++	case CURSO_CONCESIONARIO_ATTR_COCHE:
++		list_for_each_entry(c, &con->garaje, head) {
++			if (i == pos)
++				break;
++
++			i++;
++		}
++
++		return c;
++	}
++	return NULL;
++}
++
++uint32_t curso_concesionario_attr_get_u32(struct concesionario *con,
++					  uint16_t attr)
++{
++	const void *ret = curso_concesionario_attr_get_data(con, attr, 0);
++	return ret == NULL ? 0 : *((uint32_t *)ret);
++}
++
++const char *curso_concesionario_attr_get_str(struct concesionario *con,
++					     uint16_t attr)
++{
++	return curso_concesionario_attr_get_data(con, attr, 0);
++}
++
++struct coche *curso_concesionario_attr_get_coche(struct concesionario *con,
++					         uint16_t attr, uint32_t pos)
++{
++	return (struct coche *)curso_concesionario_attr_get_data(con, attr,
++								 pos);
++}
++
++int curso_concesionario_snprintf(char *buf, size_t size,
++				 struct concesionario *con)
++{
++	int ret = 0;
++	struct coche *c;
++
++	ret += snprintf(buf, size,
++			"el concesionario propiedad de %s, tiene %d y son:\n",
++			con->dueno, con->num_coches);
++
++	list_for_each_entry(c, &con->garaje, head) {
++		ret += curso_coche_snprintf(buf + ret, size - ret, c);
++		ret += snprintf(buf + ret, size - ret, "\n");
++	}
++
++	return ret;
++}
++
++const void *curso_concesionario_write_coches(struct concesionario *con,
++						FILE *file)
++{
++	struct coche *c;
++	char *matricula, *marca;
++	char *id;
++	char *buffer;
++
++	id = (char *)calloc(10,  sizeof(char *));
++	matricula = (char *)calloc(50, sizeof(char *));
++	marca = (char *)calloc(50, sizeof(char *));
++	buffer = (char *)calloc(120, sizeof(char *));
++
++	list_for_each_entry(c, &con->garaje, head) {
++		buffer = strcpy(buffer, "");
++		sprintf(id, "%d", c->id);
++		buffer = strcat(buffer, id);
++		buffer = strcat(buffer, ",");
++		matricula = strcpy(matricula, c->matricula);
++		buffer = strcat(buffer, matricula);
++                buffer = strcat(buffer, ",");
++		marca = strcpy(marca, c->marca);
++		buffer = strcat(buffer, marca);
++                buffer = strcat(buffer, "\n");
++		fwrite(buffer, strlen(buffer), 1, file);
++	}
++
++	xfree(id);
++	xfree(matricula);
++	xfree(marca);
++	xfree(buffer);
++}
++
++void read_file_to_concesionario(const char *file, struct concesionario *con)
++{
++        FILE *f;
++        struct coche *c1;
++        char dueno[50], matricula[50], gama[50];
++        char buffer[100];
++        char id[5];
++        int br = 0;
++        int max_coches = 0;
++
++        f = fopen(file, "r");
++        if (f == NULL) {
++                printf("No se pudo leer el archivo %s\n", file);
++                return;
++        }
++
++        br = nextAttr(f, dueno);
++
++        curso_concesionario_attr_set_str(con, CURSO_CONCESIONARIO_ATTR_DUENO,
++                                         dueno);
++
++        while (max_coches < 10) {
++                c1 = curso_coche_alloc();
++
++                br = nextAttr(f, id);
++                curso_coche_attr_set_u32(c1, CURSO_COCHE_ATTR_ID, atoi(id));
++
++                br = nextAttr(f, matricula);
++                curso_coche_attr_set_str(c1, CURSO_COCHE_ATTR_MATRICULA,
++                                        matricula);
++
++                br = nextAttr(f, gama);
++                curso_coche_attr_set_str(c1, CURSO_COCHE_ATTR_MARCA,
++                                        gama);
++
++                if (br < 1) {
++                        curso_coche_free(c1);
++                        break;
++                }
++
++                curso_concesionario_attr_set_coche(con,
++                                        CURSO_CONCESIONARIO_ATTR_COCHE, c1);
++
++                max_coches++;
++
++        }
++
++        rewind(f);
++
++        if (fclose(f) == EOF){
++                printf("No se pudo cerrar el archivo %s\n", file);
++                return;
++        }
++}
++
++void write_concesionario_to_file(const char *file,
++                                 struct concesionario *con)
++{
++        FILE *f;
++        struct coche *c;
++        uint16_t pos;
++        char *dueno = (char *)calloc(50, sizeof(char *));
++
++        f = fopen(file, "w+");
++        if (f == NULL) {
++                printf("No se pudo guardar el archivo %s\n", file);
++                xfree(dueno);
++                return;
++        }
++
++        dueno = strcpy(dueno, curso_concesionario_attr_get_str(con,
++                        CURSO_CONCESIONARIO_ATTR_DUENO));
++
++        strcat(dueno, "\n");
++
++        fwrite(dueno, strlen(dueno), 1, f);
++        curso_concesionario_write_coches(con, f);
++
++        if (fclose(f) == EOF){
++                printf("No se pudo cerrar el archivo %s\n", file);
++                xfree(dueno);
++                return;
++        }
++        xfree(dueno);
++}
+diff --git a/aplicacion/src/main.c b/aplicacion/src/main.c
+new file mode 100644
+index 0000000..fa22a23
+--- /dev/null
++++ b/aplicacion/src/main.c
+@@ -0,0 +1,501 @@
++#include "../include/concesionario.h"
++#include <getopt.h>
++#include <gtk/gtk.h>
++
++void cerrar_window(GtkWidget *widget,gpointer data);
++void append_coches(GtkTreeStore *store, struct concesionario *con);
++
++static GtkWidget *mainwindow;
++static struct concesionario *con;
++int id = 0;
++static char path[250] = "../files/";
++
++//funcion que añade un coche a la lista y guarda en fichero
++static void add_car(GtkButton *widget, gpointer data)
++{
++	GObject **widgs;
++	struct coche *c;
++	GtkWidget *entry_ptr_marca;
++	GtkWidget *entry_ptr_matricula;
++	GtkTreeStore *store;
++	GtkTreeIter iter;
++	const gchar *matricula, *marca;
++
++	widgs = (GObject **)data;
++	entry_ptr_marca = (GtkWidget *)widgs[1];
++	entry_ptr_matricula = (GtkWidget *)widgs[2];
++	store = (GtkTreeStore *)widgs[3];
++
++	marca = gtk_entry_get_text((GtkEntry *)entry_ptr_marca);
++	matricula = gtk_entry_get_text((GtkEntry *)entry_ptr_matricula);
++
++	c = curso_coche_alloc();
++	if (c == NULL)
++		return;
++
++	curso_coche_attr_set_u32(c, CURSO_COCHE_ATTR_ID, id++);
++	curso_coche_attr_set_str(c, CURSO_COCHE_ATTR_MATRICULA,	matricula);
++	curso_coche_attr_set_str(c, CURSO_COCHE_ATTR_MARCA, marca);
++
++	curso_concesionario_attr_set_coche(con, CURSO_CONCESIONARIO_ATTR_COCHE,
++					   c);
++
++	gtk_tree_store_append (store, &iter, NULL);
++        gtk_tree_store_set (store, &iter,
++                        0, FALSE,
++                        1, id - 1,
++                        2, marca,
++                        3, matricula, -1);
++
++	write_concesionario_to_file(path, con);
++
++	gtk_widget_destroy((GtkWidget *) widgs[0]);
++}
++
++//funcion que cambia el dueño del concesionario, ademas de en la aplicacion
++static void change_dueno(GtkButton *widget, gpointer data)
++{
++	GtkWidget *entry;
++	GtkWidget *labeldueno;
++	GtkWidget **widgs;
++	gchar dueno[50];
++
++	widgs = (GtkWidget **)data;
++	entry = widgs[1];
++	labeldueno = widgs[2];
++	strncpy(dueno, gtk_entry_get_text((GtkEntry *)entry), 50);
++
++	curso_concesionario_attr_set_str(con, CURSO_CONCESIONARIO_ATTR_DUENO,
++					dueno);
++
++	gtk_label_set_text((GtkLabel *)labeldueno, dueno);
++	strcpy(path, "../files/");
++	strcat(path, dueno);
++	strcat(path, ".conc");
++	gtk_window_set_title((GtkWindow *)mainwindow, path);
++
++	gtk_widget_destroy((GtkWidget *)widgs[0]);
++}
++
++//funcion que elimina los coches seleccionados de la lista y del concesionario
++static void remove_coches(GtkButton *widget, gpointer data)
++{
++	GObject **widgs;
++	GtkTreeStore *store;
++	GtkTreeIter iter;
++	GtkTreeIter iterauxiliar;
++	gboolean isIter;
++	gboolean enabled;
++	int pos = 0;
++	widgs = (GObject **)data;
++	store = (GtkTreeStore *)widgs[1];
++
++	isIter = gtk_tree_model_get_iter_first(GTK_TREE_MODEL (widgs[1]),
++						&iter);
++
++	while (isIter) {
++		iterauxiliar = iter;
++		isIter = gtk_tree_model_iter_next(
++				GTK_TREE_MODEL (widgs[1]), &iter);
++
++		gtk_tree_model_get(GTK_TREE_MODEL (store), &iterauxiliar, 0,
++					&enabled, -1);
++		if (enabled) {
++			gtk_tree_store_remove(store, &iterauxiliar);
++			curso_concesionario_attr_unset_coche(con,  pos);
++		}
++		pos++;
++	}
++
++	write_concesionario_to_file(path, con);
++
++	gtk_widget_destroy((GtkWidget *)widgs[0]);
++}
++
++//funcion de señal para la ventaña de añadir
++//llama a la funcion add_car
++static void show_add_window(GtkButton *widget, gpointer data)
++{
++	GtkWidget *window;
++	GtkWidget *button;
++	GtkWidget *buttoncancel;
++	GtkWidget *entry1, *entry2;
++	GtkWidget *box;
++	GtkWidget *labelmatricula;
++        GtkWidget *labelmarca;
++	GObject **widgs;
++
++	widgs = calloc(1, 4 * sizeof(GObject));
++
++	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
++	gtk_window_set_title(GTK_WINDOW(window), "Añada nuevo coche");
++	gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
++	gtk_window_set_default_size(GTK_WINDOW(window), 360, 100);
++	labelmatricula = gtk_label_new("Matricula:");
++	labelmarca = gtk_label_new("Marca:");
++	button = gtk_button_new_with_label("Añade");
++	buttoncancel = gtk_button_new_with_label("Cancelar");
++	box = gtk_vbox_new(TRUE,2);
++	entry1 = gtk_entry_new();
++	entry2 = gtk_entry_new();
++
++	widgs[0] = (GObject *)window;
++	widgs[1] = (GObject *)entry2;
++	widgs[2] = (GObject *)entry1;
++	widgs[3] = (GObject *)data;
++
++	gtk_box_pack_start ((GtkBox *)box, labelmarca, FALSE, TRUE, 2);
++	gtk_box_pack_start ((GtkBox *)box, entry1, TRUE, TRUE, 2);
++	gtk_box_pack_start ((GtkBox *)box, labelmatricula, FALSE, FALSE, 2);
++	gtk_box_pack_start ((GtkBox *)box, entry2, TRUE, TRUE, 2);
++
++	gtk_box_pack_start ((GtkBox *)box, button, TRUE, TRUE, 10);
++	gtk_box_pack_start ((GtkBox *)box, buttoncancel, TRUE, TRUE, 10);
++
++	gtk_container_add((GtkContainer *)window, box);
++
++	g_signal_connect((GObject *)button, "clicked", (GCallback)add_car,
++			 (gpointer)widgs);
++	g_signal_connect(G_OBJECT(buttoncancel), "clicked",
++			G_CALLBACK(cerrar_window), (gpointer)window); 
++
++	gtk_widget_show_all(window);
++}
++
++//funcion de señal para cambiar el dueño del concesionario
++//llama a la funcion change_dueno anterior
++static void show_change_dueno(GtkButton *widget, gpointer data)
++{
++        GtkWidget *window;
++        GtkWidget *label;
++        GtkWidget *buttonok;
++        GtkWidget *buttoncancel;
++        GtkWidget *vbox;
++        GtkWidget *entrydueno;
++	GtkWidget **widgs;
++
++	widgs = calloc(1, 3 * sizeof(GtkWidget));
++
++        window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
++        gtk_window_set_title(GTK_WINDOW(window), "Cambia de dueño");
++	gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
++        gtk_window_set_default_size(GTK_WINDOW(window), 300, 100);
++        buttonok = gtk_button_new_with_label("Ok");
++        buttoncancel = gtk_button_new_with_label("Cancel");
++        vbox = gtk_vbox_new(TRUE, 2);
++        entrydueno = gtk_entry_new();
++	label = gtk_label_new("Nuevo dueño:");
++
++	widgs[0] = window;
++        widgs[1] = entrydueno;
++	widgs[2] = (GtkWidget *)data;
++
++        gtk_box_pack_start (GTK_BOX(vbox), label, TRUE, TRUE, 2);
++        gtk_box_pack_start (GTK_BOX(vbox), entrydueno, TRUE, TRUE, 2);
++        gtk_box_pack_start (GTK_BOX(vbox), buttonok, TRUE, TRUE, 2);
++        gtk_box_pack_start (GTK_BOX(vbox), buttoncancel, TRUE, TRUE, 2);
++
++        gtk_container_add((GtkContainer *)window, vbox);
++
++        g_signal_connect((GObject *)buttonok, "clicked", G_CALLBACK(change_dueno),
++			(gpointer)widgs);
++        g_signal_connect(G_OBJECT(buttoncancel), "clicked",
++                      G_CALLBACK(cerrar_window),(gpointer)window);
++
++        gtk_widget_show_all(window);
++}
++
++//funcion de señal que lanza una ventana de seguridad
++//lanza la funcion remove_coches anterior
++static void show_remove_coches(GtkButton *widget, gpointer data)
++{
++	GtkWidget *window;
++	GtkWidget *label;
++	GtkWidget *buttony;
++	GtkWidget *buttonn;
++	GtkWidget *vbox;
++	GObject **widgs;
++
++	widgs = calloc(1, 2 * sizeof(GObject));
++
++	window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
++	gtk_window_set_title(GTK_WINDOW(window), "Borrar seleccionados");
++	gtk_window_set_position(GTK_WINDOW(window), GTK_WIN_POS_CENTER);
++        gtk_window_set_default_size(GTK_WINDOW(window), 300, 200);
++	buttony = gtk_button_new_with_label("Si");
++	buttonn = gtk_button_new_with_label("No");
++	label = gtk_label_new("¿Borrar seleccionados?");
++	vbox = gtk_vbox_new(TRUE, 2);
++
++	widgs[0] = (GObject *)window;
++	widgs[1] = (GObject *)data;
++
++	gtk_box_pack_start(GTK_BOX(vbox), label, TRUE, TRUE, 2);
++	gtk_box_pack_start(GTK_BOX(vbox), buttony, TRUE, TRUE, 2);
++	gtk_box_pack_start(GTK_BOX(vbox), buttonn, TRUE, TRUE, 2);
++
++	gtk_container_add((GtkContainer *)window, vbox);
++
++	g_signal_connect(G_OBJECT(buttony), "clicked",
++			G_CALLBACK(remove_coches), (gpointer)widgs);
++	g_signal_connect(G_OBJECT(buttonn), "clicked",
++			G_CALLBACK(cerrar_window), (gpointer)window);
++
++	gtk_widget_show_all(window);
++}
++
++//funcion de señal para cambiar el checkbox de los elementos de la lista
++//cuando se pulsa la celda, se lanza esta funcion y cambia su valor booleano
++static void buttonToggled(GtkCellRendererToggle* renderer, gchar* pathStr, gpointer data)
++{
++	GtkTreeIter iter;
++	gboolean enabled;
++
++	GtkTreePath* path = gtk_tree_path_new_from_string(pathStr);
++	gtk_tree_model_get_iter(GTK_TREE_MODEL (data), &iter, path);
++	gtk_tree_model_get(GTK_TREE_MODEL (data), &iter, 0, &enabled, -1);
++	enabled = enabled?0:1;
++	gtk_tree_store_set(GTK_TREE_STORE (data), &iter, 0, enabled, -1);
++}
++
++//funcion para cerrar la ventana principal
++static void funcion_quit(GtkButton *boton, gpointer data)
++{
++	curso_concesionario_free(con);
++	gtk_main_quit();
++}
++
++//funcion para cerrar las demas ventanas que no sean la principal
++void cerrar_window (GtkWidget *widget,gpointer data)
++{
++        gtk_widget_destroy((GtkWidget *)data);
++}
++
++//funcion para rellenar la lista con los coches del concesionario
++void append_coches(GtkTreeStore *store, struct concesionario *con)
++{
++	GtkTreeIter iter;
++	struct coche *c;
++	int i;
++	int numcoches = curso_concesionario_attr_get_u32(con,
++			CURSO_CONCESIONARIO_ATTR_NUM_COCHES);
++
++	for (i = 0; i < numcoches; i++) {
++		c = curso_concesionario_attr_get_coche(con,
++			CURSO_CONCESIONARIO_ATTR_COCHE, i);
++
++		gtk_tree_store_append (store, &iter, NULL);
++		gtk_tree_store_set (store, &iter,
++                        0, FALSE,
++                        1, c->id,
++                        2, c->marca,
++                        3, c->matricula, -1);
++	}
++
++	id = c->id + 1;
++}
++
++int main (int argc, char *argv[])
++{
++	char d[50];
++	int valor, option_index = 0;
++	uint8_t flags = 0;
++
++	GtkWidget *button1;
++	GtkWidget *buttondueno;
++	GtkWidget *buttonremove;
++	GtkWidget *vbox;
++	GtkWidget *vbox2;
++	GtkWidget *vbox3;
++	GtkWidget *hbox;
++	GtkWidget *hbox2;
++	GtkWidget *hbox3;
++
++	GtkTreeStore *store;
++	GtkWidget *treeview;
++	GtkTreeViewColumn *column;
++	GtkCellRenderer *renderer;
++	GtkTreeIter *iter;
++
++	GtkWidget *menubar;
++	GtkWidget *file;
++	GtkWidget *edit;
++	GtkWidget *filemenu;
++	GtkWidget *editmenu;
++	GtkWidget *cambiardueno;
++	GtkWidget *anadecoche;
++	GtkWidget *removecoches;
++	GtkWidget *quit;
++
++	GtkWidget *labeldueno;
++	GtkWidget *labeldueno2;
++	GtkWidget *labellista;
++
++	//se debe indicar con la bandera el nombre del dueño solo, sin .conc
++	//por ejemplo: aplicacion -c Guille
++	static struct option long_options[] = {
++		{ "concesionario", required_argument, 0, 'c'},
++		{ "help", 0, 0, 'h'},
++		{ 0 }
++	};
++
++	while((valor = getopt_long(argc, argv, "c:h", long_options,
++				&option_index)) != -1) {
++
++		switch(valor) {
++		case 'c':
++			strncpy(d, optarg, 50);
++			flags |= 1 << 0;
++			break;
++		case 'h':
++		default:
++			flags |= 1 << 1;
++			printf("Parametro de entrada: -c/-concesionario "
++				"{nombre dueño}\n");
++			break;
++		}
++	}
++
++	if (flags > 1)
++		return 0;
++
++
++	if (flags != 1)
++		strcpy(d, "NombrePorDefecto");
++
++	strcat(path, d);
++	strcat(path, ".conc");
++
++	con = curso_concesionario_alloc();
++
++	if (con == NULL)
++			return -1;
++
++	curso_concesionario_attr_set_str(con, CURSO_CONCESIONARIO_ATTR_DUENO,
++					 d);
++
++	//si se ha indicado la bandera -c se lee del archivo si existe
++	if (flags == 1)
++		read_file_to_concesionario(path, con);
++
++
++	gtk_init(&argc, &argv);
++
++	strcpy(d, curso_concesionario_attr_get_str(con,
++		CURSO_CONCESIONARIO_ATTR_DUENO));
++
++	//inicializando widgets
++	mainwindow = gtk_window_new(GTK_WINDOW_TOPLEVEL);
++	gtk_window_set_title((GtkWindow *)mainwindow, path);
++	gtk_window_set_position(GTK_WINDOW(mainwindow), GTK_WIN_POS_CENTER);
++	gtk_window_set_default_size(GTK_WINDOW(mainwindow), 420, 420);
++	button1 = gtk_button_new_with_label("Añadir Coche");
++	buttondueno = gtk_button_new_with_label("Cambia dueño");
++	buttonremove = gtk_button_new_with_label("Borrar");
++	vbox = gtk_vbox_new(FALSE, 3);
++	vbox2 = gtk_vbox_new(FALSE, 0);
++	vbox3 = gtk_vbox_new(FALSE, 1);
++	hbox = gtk_hbox_new(FALSE, 2);
++	hbox2 = gtk_hbox_new(FALSE, 3);
++	hbox3 = gtk_hbox_new(FALSE, 5);
++	menubar = gtk_menu_bar_new();
++	filemenu = gtk_menu_new();
++	editmenu = gtk_menu_new();
++	file = gtk_menu_item_new_with_label("File");
++	edit = gtk_menu_item_new_with_label("Edit");
++	cambiardueno = gtk_menu_item_new_with_label("Cambiar dueño ...");
++	anadecoche = gtk_menu_item_new_with_label("Añade coche ...");
++	removecoches = gtk_menu_item_new_with_label("Borrar coches ...");
++	quit = gtk_menu_item_new_with_label("Salir");
++
++	//creando la barra de menu
++	gtk_menu_item_set_submenu(GTK_MENU_ITEM(file), filemenu);
++	gtk_menu_item_set_submenu(GTK_MENU_ITEM(edit), editmenu);
++	gtk_menu_shell_append(GTK_MENU_SHELL(filemenu), cambiardueno);
++	gtk_menu_shell_append(GTK_MENU_SHELL(filemenu), quit);
++	gtk_menu_shell_append(GTK_MENU_SHELL(editmenu), anadecoche);
++	gtk_menu_shell_append(GTK_MENU_SHELL(editmenu), removecoches);
++	gtk_menu_shell_append(GTK_MENU_SHELL(menubar), file);
++	gtk_menu_shell_append(GTK_MENU_SHELL(menubar), edit);
++	gtk_box_pack_start(GTK_BOX(vbox), menubar, FALSE, FALSE, 3);
++
++	//agrupando boxes
++	labeldueno = gtk_label_new("Dueño: ");
++	labeldueno2 = gtk_label_new(d);
++	labellista = gtk_label_new("Lista de coches:");
++	gtk_box_pack_start(GTK_BOX(hbox), labeldueno, TRUE, FALSE, 6);
++	gtk_box_pack_start(GTK_BOX(hbox), labeldueno2, FALSE, FALSE, 8);
++	gtk_box_pack_start(GTK_BOX(hbox), buttondueno, TRUE, FALSE, 2);
++	gtk_box_pack_start(GTK_BOX(hbox2), labellista ,FALSE, FALSE, 20);
++
++	gtk_box_pack_start(GTK_BOX(vbox2), hbox, FALSE, FALSE, 10);
++	gtk_box_pack_start(GTK_BOX(vbox2), hbox2, FALSE, FALSE, 5);
++
++	//generando la vista de la lista de coches
++	treeview = gtk_tree_view_new();
++	store = gtk_tree_store_new(4, G_TYPE_BOOLEAN, G_TYPE_INT,
++					 G_TYPE_STRING,	G_TYPE_STRING);
++
++	treeview = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
++	g_object_unref (G_OBJECT (store));
++
++	renderer = gtk_cell_renderer_toggle_new ();
++	column = gtk_tree_view_column_new_with_attributes ("Check",
++				renderer, "active", 0, NULL);
++	gtk_tree_view_append_column (GTK_TREE_VIEW (treeview), column);
++	g_object_set(renderer, "activatable", TRUE, NULL);
++	//señal que lanza la funcion buttonToggled de arriba
++	g_signal_connect(renderer, "toggled", (GCallback) buttonToggled,
++				store);
++
++	renderer = gtk_cell_renderer_text_new ();
++	column = gtk_tree_view_column_new_with_attributes ("Id",
++				renderer, "text", 1, NULL);
++	gtk_tree_view_append_column (GTK_TREE_VIEW (treeview), column);
++
++	renderer = gtk_cell_renderer_text_new ();
++        column = gtk_tree_view_column_new_with_attributes ("Matricula",
++                                renderer, "text", 2, NULL);
++        gtk_tree_view_append_column (GTK_TREE_VIEW (treeview), column);
++
++	renderer = gtk_cell_renderer_text_new ();
++	column = gtk_tree_view_column_new_with_attributes ("Marca",
++				renderer, "text", 3, NULL);
++	gtk_tree_view_append_column (GTK_TREE_VIEW (treeview), column);
++
++	append_coches(store, con);
++
++	//agrupando mas boxes
++	gtk_box_pack_start(GTK_BOX(hbox3), treeview, TRUE, TRUE, 2);
++	gtk_box_pack_start(GTK_BOX(vbox3), button1, FALSE, FALSE, 5);
++	gtk_box_pack_start(GTK_BOX(vbox3), buttonremove, FALSE, FALSE, 5);
++	gtk_box_pack_start(GTK_BOX(hbox3), vbox3, FALSE, FALSE, 2);
++	gtk_box_pack_start(GTK_BOX(vbox2), hbox3, TRUE, TRUE, 2);
++	gtk_box_pack_start(GTK_BOX(vbox), vbox2, TRUE, TRUE, 2);
++	gtk_container_add((GtkContainer *)mainwindow, vbox);
++
++	//señales, en algunas se pasan los punteros a widgets a modificar
++	/*los items de la barra de menu lanzan las mismas funciones que los
++	  botones, pasando los mismos datos */
++	g_signal_connect(G_OBJECT(button1), "clicked",
++			G_CALLBACK(show_add_window), store);
++	g_signal_connect(G_OBJECT(mainwindow), "delete-event",
++			G_CALLBACK(funcion_quit), NULL);
++	g_signal_connect(G_OBJECT(buttondueno), "clicked",
++			G_CALLBACK(show_change_dueno), labeldueno2);
++	g_signal_connect(G_OBJECT(buttonremove), "clicked",
++			G_CALLBACK(show_remove_coches), store);
++	g_signal_connect(G_OBJECT(anadecoche), "activate",
++			G_CALLBACK(show_add_window), store);
++	g_signal_connect(G_OBJECT(removecoches), "activate",
++			G_CALLBACK(show_remove_coches), store);
++	g_signal_connect(G_OBJECT(cambiardueno), "activate",
++			G_CALLBACK(show_change_dueno), labeldueno2);
++	g_signal_connect(G_OBJECT(quit), "activate",
++                        G_CALLBACK(funcion_quit), NULL);
++
++	gtk_widget_show_all(mainwindow);
++
++	gtk_main();
++	return 0;
++}
+-- 
+1.9.1
+
