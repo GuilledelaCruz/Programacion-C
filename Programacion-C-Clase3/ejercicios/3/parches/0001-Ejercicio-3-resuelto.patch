@@ -1,0 +1,945 @@
+From 402262514a1798e31df0394b5711a039c6700399 Mon Sep 17 00:00:00 2001
+From: Guille de la Cruz Dorado <guille.informatica.sevilla@gmail.com>
+Date: Mon, 23 Mar 2015 12:19:40 +0100
+Subject: [PATCH] [CURSO C] Ejercicio 3 resuelto
+
+Resolver el ejercicio 3 mediante el uso de ficheros
+
+Resuelto, creando funciones de lectura y escritura de ficheros
+
+Signed-off-by: Guille de la Cruz Dorado <guille.informatica.sevilla@gmail.com>
+---
+ ejercicios/3/Makefile.am             |   2 +
+ ejercicios/3/configure.ac            |  10 ++
+ ejercicios/3/files/entrada.txt       |   3 +
+ ejercicios/3/files/salida.txt        |   0
+ ejercicios/3/include/coche.h         |  43 ++++++
+ ejercicios/3/include/concesionario.h |  36 ++++++
+ ejercicios/3/include/list.h          | 244 +++++++++++++++++++++++++++++++++++
+ ejercicios/3/src/Makefile.am         |   2 +
+ ejercicios/3/src/coche.c             | 125 ++++++++++++++++++
+ ejercicios/3/src/concesionario.c     | 203 +++++++++++++++++++++++++++++
+ ejercicios/3/src/main.c              | 153 ++++++++++++++++++++++
+ ejercicios/3/valgrind/valgrind.log   |  15 +++
+ 12 files changed, 836 insertions(+)
+ create mode 100644 ejercicios/3/Makefile.am
+ create mode 100644 ejercicios/3/configure.ac
+ create mode 100644 ejercicios/3/files/entrada.txt
+ create mode 100644 ejercicios/3/files/salida.txt
+ create mode 100644 ejercicios/3/include/coche.h
+ create mode 100644 ejercicios/3/include/concesionario.h
+ create mode 100644 ejercicios/3/include/list.h
+ create mode 100644 ejercicios/3/src/Makefile.am
+ create mode 100644 ejercicios/3/src/coche.c
+ create mode 100644 ejercicios/3/src/concesionario.c
+ create mode 100644 ejercicios/3/src/main.c
+ create mode 100644 ejercicios/3/valgrind/valgrind.log
+
+diff --git a/ejercicios/3/Makefile.am b/ejercicios/3/Makefile.am
+new file mode 100644
+index 0000000..dfa49b2
+--- /dev/null
++++ b/ejercicios/3/Makefile.am
+@@ -0,0 +1,2 @@
++AUTOMAKE_OPTIONS = foreign
++SUBDIRS = src
+diff --git a/ejercicios/3/configure.ac b/ejercicios/3/configure.ac
+new file mode 100644
+index 0000000..9d5c0c7
+--- /dev/null
++++ b/ejercicios/3/configure.ac
+@@ -0,0 +1,10 @@
++AC_INIT([concesionario_readwrite], [1.0], [guille.informatica.sevilla@gmail.com])
++
++AM_INIT_AUTOMAKE([-Wall -Werror foreign])
++
++AC_CONFIG_SRCDIR([src/main.c])
++AC_PROG_CC
++AC_CHECK_HEADERS([stdlib.h stdint.h stdbool.h])
++AC_FUNC_MALLOC
++
++AC_OUTPUT(Makefile src/Makefile)
+diff --git a/ejercicios/3/files/entrada.txt b/ejercicios/3/files/entrada.txt
+new file mode 100644
+index 0000000..0ba8f39
+--- /dev/null
++++ b/ejercicios/3/files/entrada.txt
+@@ -0,0 +1,3 @@
++Guillermo
++1,EF 123 DF,Renault Megane
++2,DF 2424 FG,Ford Focus
+diff --git a/ejercicios/3/files/salida.txt b/ejercicios/3/files/salida.txt
+new file mode 100644
+index 0000000..e69de29
+diff --git a/ejercicios/3/include/coche.h b/ejercicios/3/include/coche.h
+new file mode 100644
+index 0000000..319dd33
+--- /dev/null
++++ b/ejercicios/3/include/coche.h
+@@ -0,0 +1,43 @@
++#include <stdio.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <stdbool.h>
++#include "list.h"
++
++enum {
++	CURSO_COCHE_ATTR_MARCA,
++	CURSO_COCHE_ATTR_MATRICULA,
++	CURSO_COCHE_ATTR_ID,
++	__CURSO_COCHE_ATTR_MAX
++};
++
++#define CURSO_COCHE_ATTR_MAX (__CURSO_COCHE_ATTR_MAX - 1)
++
++#define xfree(ptr)      free((void *)ptr);
++
++struct coche {
++	struct list_head	head;
++	uint32_t		id;
++	const char      	*matricula;
++	const char		*marca;
++
++	uint32_t		flags;
++};
++
++struct coche *curso_coche_alloc(void);
++void curso_coche_free(struct coche *);
++
++bool curso_coche_attr_is_set(const struct coche *c, uint16_t attr);
++
++void curso_coche_attr_unset(struct coche *c, uint16_t attr);
++
++void curso_coche_attr_set_data(struct coche *c, uint16_t attr, const void *data,
++			       uint32_t data_len);
++void curso_coche_attr_set_u32(struct coche *c, uint16_t attr, uint32_t data);
++void curso_coche_attr_set_str(struct coche *c, uint16_t attr, const char *data);
++
++const void *curso_coche_attr_get_data(struct coche *c, uint16_t attr);
++uint32_t curso_coche_attr_get_u32(struct coche *c, uint16_t attr);
++const char *curso_coche_attr_get_str(struct coche *c, uint16_t attr);
++
++int curso_coche_snprintf(char *buf, size_t size, struct coche *c);
+diff --git a/ejercicios/3/include/concesionario.h b/ejercicios/3/include/concesionario.h
+new file mode 100644
+index 0000000..81291c2
+--- /dev/null
++++ b/ejercicios/3/include/concesionario.h
+@@ -0,0 +1,36 @@
++#include "coche.h"
++
++enum {
++	CURSO_CONCESIONARIO_ATTR_COCHE,
++	CURSO_CONCESIONARIO_ATTR_DUENO,
++	CURSO_CONCESIONARIO_ATTR_NUM_COCHES,
++	__CURSO_CONCESIONARIO_ATTR_MAX
++};
++
++#define CURSO_CONCESIONARIO_ATTR_MAX (__CURSO_CONCESIONARIO_ATTR_MAX - 1)
++
++struct concesionario;
++
++struct concesionario *curso_concesionario_alloc(void);
++void curso_concesionario_free(struct concesionario *);
++
++void curso_concesionario_attr_unset_coche(struct concesionario *con,
++					  uint32_t pos);
++
++void curso_concesionario_attr_set_str(struct concesionario *con, uint16_t attr,
++				      const char *data);
++void curso_concesionario_attr_set_coche(struct concesionario *con,
++					uint16_t attr, struct coche *c);
++
++uint32_t curso_concesionario_attr_get_u32(struct concesionario *con,
++					  uint16_t attr);
++const char *curso_concesionario_attr_get_str(struct concesionario *con,
++					     uint16_t attr);
++struct coche *curso_concesionario_attr_get_coche(struct concesionario *con,
++						 uint16_t attr, uint32_t pos);
++
++int curso_concesionario_snprintf(char *buf, size_t size,
++				struct concesionario *c);
++
++const void *curso_concesionario_write_coches(struct concesionario *con,
++                                        FILE *file);
+diff --git a/ejercicios/3/include/list.h b/ejercicios/3/include/list.h
+new file mode 100644
+index 0000000..3a76885
+--- /dev/null
++++ b/ejercicios/3/include/list.h
+@@ -0,0 +1,244 @@
++#ifndef __LIST_H
++#define __LIST_H
++
++/* This file is from Linux Kernel (include/linux/list.h) 
++ * and modified by simply removing hardware prefetching of list items. 
++ * Here by copyright, credits attributed to wherever they belong.
++ * Kulesh Shanmugasundaram (kulesh [squiggly] isis.poly.edu)
++ */
++
++/*
++ * Simple doubly linked list implementation.
++ *
++ * Some of the internal functions ("__xxx") are useful when
++ * manipulating whole lists rather than single entries, as
++ * sometimes we already know the next/prev entries and we can
++ * generate better code by using them directly rather than
++ * using the generic single-entry routines.
++ */
++
++struct list_head {
++	struct list_head *next, *prev;
++};
++
++#define LIST_HEAD_INIT(name) { &(name), &(name) }
++
++#define LIST_HEAD(name) \
++	struct list_head name = LIST_HEAD_INIT(name)
++
++#define INIT_LIST_HEAD(ptr) do { \
++	(ptr)->next = (ptr); (ptr)->prev = (ptr); \
++} while (0)
++
++/*
++ * Insert a new entry between two known consecutive entries. 
++ *
++ * This is only for internal list manipulation where we know
++ * the prev/next entries already!
++ */
++static inline void __list_add(struct list_head *new,
++			      struct list_head *prev,
++			      struct list_head *next)
++{
++	next->prev = new;
++	new->next = next;
++	new->prev = prev;
++	prev->next = new;
++}
++
++/**
++ * list_add - add a new entry
++ * @new: new entry to be added
++ * @head: list head to add it after
++ *
++ * Insert a new entry after the specified head.
++ * This is good for implementing stacks.
++ */
++static inline void list_add(struct list_head *new, struct list_head *head)
++{
++	__list_add(new, head, head->next);
++}
++
++/**
++ * list_add_tail - add a new entry
++ * @new: new entry to be added
++ * @head: list head to add it before
++ *
++ * Insert a new entry before the specified head.
++ * This is useful for implementing queues.
++ */
++static inline void list_add_tail(struct list_head *new, struct list_head *head)
++{
++	__list_add(new, head->prev, head);
++}
++
++/*
++ * Delete a list entry by making the prev/next entries
++ * point to each other.
++ *
++ * This is only for internal list manipulation where we know
++ * the prev/next entries already!
++ */
++static inline void __list_del(struct list_head *prev, struct list_head *next)
++{
++	next->prev = prev;
++	prev->next = next;
++}
++
++/**
++ * list_del - deletes entry from list.
++ * @entry: the element to delete from the list.
++ * Note: list_empty on entry does not return true after this, the entry is in an undefined state.
++ */
++static inline void list_del(struct list_head *entry)
++{
++	__list_del(entry->prev, entry->next);
++	entry->next = (void *) 0;
++	entry->prev = (void *) 0;
++}
++
++/**
++ * list_del_init - deletes entry from list and reinitialize it.
++ * @entry: the element to delete from the list.
++ */
++static inline void list_del_init(struct list_head *entry)
++{
++	__list_del(entry->prev, entry->next);
++	INIT_LIST_HEAD(entry); 
++}
++
++/**
++ * list_move - delete from one list and add as another's head
++ * @list: the entry to move
++ * @head: the head that will precede our entry
++ */
++static inline void list_move(struct list_head *list, struct list_head *head)
++{
++        __list_del(list->prev, list->next);
++        list_add(list, head);
++}
++
++/**
++ * list_move_tail - delete from one list and add as another's tail
++ * @list: the entry to move
++ * @head: the head that will follow our entry
++ */
++static inline void list_move_tail(struct list_head *list,
++				  struct list_head *head)
++{
++        __list_del(list->prev, list->next);
++        list_add_tail(list, head);
++}
++
++/**
++ * list_empty - tests whether a list is empty
++ * @head: the list to test.
++ */
++static inline int list_empty(struct list_head *head)
++{
++	return head->next == head;
++}
++
++static inline void __list_splice(struct list_head *list,
++				 struct list_head *head)
++{
++	struct list_head *first = list->next;
++	struct list_head *last = list->prev;
++	struct list_head *at = head->next;
++
++	first->prev = head;
++	head->next = first;
++
++	last->next = at;
++	at->prev = last;
++}
++
++/**
++ * list_splice - join two lists
++ * @list: the new list to add.
++ * @head: the place to add it in the first list.
++ */
++static inline void list_splice(struct list_head *list, struct list_head *head)
++{
++	if (!list_empty(list))
++		__list_splice(list, head);
++}
++
++/**
++ * list_splice_init - join two lists and reinitialise the emptied list.
++ * @list: the new list to add.
++ * @head: the place to add it in the first list.
++ *
++ * The list at @list is reinitialised
++ */
++static inline void list_splice_init(struct list_head *list,
++				    struct list_head *head)
++{
++	if (!list_empty(list)) {
++		__list_splice(list, head);
++		INIT_LIST_HEAD(list);
++	}
++}
++
++/**
++ * list_entry - get the struct for this entry
++ * @ptr:	the &struct list_head pointer.
++ * @type:	the type of the struct this is embedded in.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_entry(ptr, type, member) \
++	((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
++
++/**
++ * list_for_each	-	iterate over a list
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ */
++#define list_for_each(pos, head) \
++	for (pos = (head)->next; pos != (head); \
++        	pos = pos->next)
++/**
++ * list_for_each_prev	-	iterate over a list backwards
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ */
++#define list_for_each_prev(pos, head) \
++	for (pos = (head)->prev; pos != (head); \
++        	pos = pos->prev)
++        	
++/**
++ * list_for_each_safe	-	iterate over a list safe against removal of list entry
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @n:		another &struct list_head to use as temporary storage
++ * @head:	the head for your list.
++ */
++#define list_for_each_safe(pos, n, head) \
++	for (pos = (head)->next, n = pos->next; pos != (head); \
++		pos = n, n = pos->next)
++
++/**
++ * list_for_each_entry	-	iterate over list of given type
++ * @pos:	the type * to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry(pos, head, member)				\
++	for (pos = list_entry((head)->next, typeof(*pos), member);	\
++	     &pos->member != (head); 					\
++	     pos = list_entry(pos->member.next, typeof(*pos), member))
++
++/**
++ * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
++ * @pos:	the type * to use as a loop counter.
++ * @n:		another type * to use as temporary storage
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry_safe(pos, n, head, member)			\
++	for (pos = list_entry((head)->next, typeof(*pos), member),	\
++		n = list_entry(pos->member.next, typeof(*pos), member);	\
++	     &pos->member != (head); 					\
++	     pos = n, n = list_entry(n->member.next, typeof(*n), member))
++
++
++#endif
+diff --git a/ejercicios/3/src/Makefile.am b/ejercicios/3/src/Makefile.am
+new file mode 100644
+index 0000000..8694188
+--- /dev/null
++++ b/ejercicios/3/src/Makefile.am
+@@ -0,0 +1,2 @@
++bin_PROGRAMS = concesionario_readwrite
++concesionario_readwrite_SOURCES = main.c coche.c concesionario.c
+diff --git a/ejercicios/3/src/coche.c b/ejercicios/3/src/coche.c
+new file mode 100644
+index 0000000..9434943
+--- /dev/null
++++ b/ejercicios/3/src/coche.c
+@@ -0,0 +1,125 @@
++#include "../include/coche.h"
++#include <string.h>
++
++struct coche *curso_coche_alloc(void)
++{
++	struct coche *c = (struct coche *)malloc(sizeof(struct coche));
++
++	c->id = 0;
++	c->marca = NULL;
++	c->matricula = NULL;
++	c->flags = 0;
++
++	return c;
++}
++
++void curso_coche_free(struct coche *c)
++{
++	if (c->flags & (1 << CURSO_COCHE_ATTR_MARCA))
++		xfree(c->marca);
++
++	if (c->flags & (1 << CURSO_COCHE_ATTR_MATRICULA))
++		xfree(c->matricula);
++
++	xfree(c);
++}
++
++bool curso_coche_attr_is_set(const struct coche *c, uint16_t attr)
++{
++	return c->flags & (1 << attr);
++}
++
++void curso_coche_attr_unset(struct coche *c, uint16_t attr)
++{
++	if (!(c->flags & (1 << attr)))
++		return;
++
++	switch (attr) {
++	case CURSO_COCHE_ATTR_MARCA:
++		if (c->marca) {
++			xfree(c->marca);
++			c->marca = NULL;
++		}
++		break;
++	case CURSO_COCHE_ATTR_MATRICULA:
++		if (c->matricula) {
++			xfree(c->matricula);
++			c->matricula = NULL;
++		}
++		break;
++	case CURSO_COCHE_ATTR_ID:
++		break;
++	}
++
++	c->flags &= ~(1 << attr);
++}
++
++void curso_coche_set_data(struct coche *c, uint16_t attr, const void *data,
++			  uint32_t data_len)
++{
++	if (attr > CURSO_COCHE_ATTR_MAX)
++		return;
++
++	switch (attr) {
++	case CURSO_COCHE_ATTR_MARCA:
++		if (c->marca)
++			xfree(c->marca);
++
++		c->marca = strdup(data);
++		break;
++	case CURSO_COCHE_ATTR_MATRICULA:
++		if (c->matricula)
++			xfree(c->matricula);
++
++		c->matricula = strdup(data);
++		break;
++	case CURSO_COCHE_ATTR_ID:
++		c->id = *((uint32_t *)data);
++		break;
++	}
++
++	c->flags |= (1 << attr);
++}
++
++void curso_coche_attr_set_u32(struct coche *c, uint16_t attr, uint32_t data)
++{
++	curso_coche_set_data(c, attr, &data, sizeof(uint32_t));
++}
++
++void curso_coche_attr_set_str(struct coche *c, uint16_t attr, const char *data)
++{
++	curso_coche_set_data(c, attr, data, 0);
++}
++
++const void *curso_coche_attr_get_data(struct coche *c, uint16_t attr)
++{
++	if (!(c->flags & (1 << attr)))
++		return NULL;
++
++	switch(attr) {
++	case CURSO_COCHE_ATTR_MARCA:
++		return c->marca;
++	case CURSO_COCHE_ATTR_MATRICULA:
++		return c->matricula;
++	case CURSO_COCHE_ATTR_ID:
++		return &c->id;
++	}
++	return NULL;
++}
++
++uint32_t curso_coche_attr_get_u32(struct coche *c, uint16_t attr)
++{
++	const void *ret = curso_coche_attr_get_data(c, attr);
++	return ret == NULL ? 0 : *((uint32_t *)ret);
++}
++
++const char *curso_coche_attr_get_str(struct coche *c, uint16_t attr)
++{
++	return curso_coche_attr_get_data(c, attr);
++}
++
++int curso_coche_snprintf(char *buf, size_t size, struct coche *c)
++{
++	return snprintf(buf, size, "matricula %s marca %s id %d",
++			c->matricula, c->marca, c->id);
++}
+diff --git a/ejercicios/3/src/concesionario.c b/ejercicios/3/src/concesionario.c
+new file mode 100644
+index 0000000..aade185
+--- /dev/null
++++ b/ejercicios/3/src/concesionario.c
+@@ -0,0 +1,203 @@
++#include "../include/concesionario.h"
++#include <string.h>
++
++struct concesionario {
++	struct list_head	garaje;
++	const char      	*dueno;
++	uint32_t		num_coches;
++
++	uint32_t		flags;
++};
++
++struct concesionario *curso_concesionario_alloc(void)
++{
++	struct concesionario *con;
++	char *d = "Ningun dueño asignador";
++	con = (struct concesionario *)malloc(sizeof(struct concesionario));
++	if (con ==  NULL)
++		return NULL;
++
++	INIT_LIST_HEAD(&con->garaje);
++	con->num_coches = 0;
++	con->dueno = strdup(d);
++	con->flags = 0;
++
++	return con;
++}
++
++void curso_concesionario_free(struct concesionario *con)
++{
++	struct coche *c, *tmp;
++
++	if (con->flags & (1 << CURSO_CONCESIONARIO_ATTR_DUENO))
++		xfree(con->dueno);
++
++	list_for_each_entry_safe(c, tmp, &con->garaje, head) {
++		list_del(&c->head);
++		curso_coche_free(c);
++	}
++
++	xfree(con);
++}
++
++void curso_concesionario_attr_unset_coche(struct concesionario *con,
++					  uint32_t pos)
++{
++	int i = 0;
++	struct coche *c, *tmp;
++
++	if (pos < 0 || pos > con->num_coches)
++		return;
++
++	list_for_each_entry_safe(c, tmp, &con->garaje, head) {
++		if (i == pos) {
++			list_del(&c->head);
++			curso_coche_free(c);
++			break;
++		}
++
++		i++;
++	}
++
++	con->num_coches--;
++}
++
++static void curso_concesionario_set_data(struct concesionario *con,
++					 uint16_t attr, const void *data)
++{
++	struct coche *c;
++
++	if (attr > CURSO_CONCESIONARIO_ATTR_MAX)
++		return;
++
++	switch (attr) {
++	case CURSO_CONCESIONARIO_ATTR_DUENO:
++		if (con->dueno)
++			xfree(con->dueno);
++
++		con->dueno = strdup(data);
++		break;
++	case CURSO_CONCESIONARIO_ATTR_COCHE:
++		if (con->num_coches > 50) {
++			printf("El garaje esta lleno\n");
++			break;
++		}
++		c = (struct coche *)data;
++		list_add(&c->head, &con->garaje);
++		con->num_coches++;
++		break;
++	}
++
++	con->flags |= (1 << attr);
++}
++
++void curso_concesionario_attr_set_str(struct concesionario *con,
++					uint16_t attr, const char *data)
++{
++	curso_concesionario_set_data(con, attr, data);
++}
++
++void curso_concesionario_attr_set_coche(struct concesionario *con,
++					  uint16_t attr, struct coche *data)
++{
++	curso_concesionario_set_data(con, attr, data);
++}
++
++const void *curso_concesionario_attr_get_data(struct concesionario *con,
++					      uint16_t attr, uint32_t pos)
++{
++	int i = 0;
++	struct coche *c;
++
++	if (!(con->flags & (1 << attr)))
++		return NULL;
++
++	switch(attr) {
++	case CURSO_CONCESIONARIO_ATTR_DUENO:
++		return con->dueno;
++	case CURSO_CONCESIONARIO_ATTR_NUM_COCHES:
++		return &con->num_coches;
++	case CURSO_CONCESIONARIO_ATTR_COCHE:
++		list_for_each_entry(c, &con->garaje, head) {
++			if (i == pos)
++				break;
++
++			i++;
++		}
++
++		return c;
++	}
++	return NULL;
++}
++
++uint32_t curso_concesionario_attr_get_u32(struct concesionario *con,
++					  uint16_t attr)
++{
++	const void *ret = curso_concesionario_attr_get_data(con, attr, 0);
++	return ret == NULL ? 0 : *((uint32_t *)ret);
++}
++
++const char *curso_concesionario_attr_get_str(struct concesionario *con,
++					     uint16_t attr)
++{
++	return curso_concesionario_attr_get_data(con, attr, 0);
++}
++
++struct coche *curso_concesionario_attr_get_coche(struct concesionario *con,
++					         uint16_t attr, uint32_t pos)
++{
++	return (struct coche *)curso_concesionario_attr_get_data(con, attr,
++								 pos);
++}
++
++int curso_concesionario_snprintf(char *buf, size_t size,
++				 struct concesionario *con)
++{
++	int ret = 0;
++	struct coche *c;
++
++	ret += snprintf(buf, size,
++			"el concesionario propiedad de %s, tiene %d y son:\n",
++			con->dueno, con->num_coches);
++
++	list_for_each_entry(c, &con->garaje, head) {
++		ret += curso_coche_snprintf(buf + ret, size - ret, c);
++		ret += snprintf(buf + ret, size - ret, "\n");
++	}
++
++	return ret;
++}
++
++const void *curso_concesionario_write_coches(struct concesionario *con,
++						FILE *file)
++{
++	struct coche *c;
++	char *matricula, *marca;
++	char *id;
++	char *buffer;
++
++	id = (char *)calloc(10,  sizeof(char *));
++	matricula = (char *)calloc(50, sizeof(char *));
++	marca = (char *)calloc(50, sizeof(char *));
++	buffer = (char *)calloc(120, sizeof(char *));
++
++	list_for_each_entry(c, &con->garaje, head) {
++		buffer = strcpy(buffer, "");
++		sprintf(id, "%d", c->id);
++		buffer = strcat(buffer, id);
++		buffer = strcat(buffer, ",");
++		matricula = strcpy(matricula, c->matricula);
++		buffer = strcat(buffer, matricula);
++                buffer = strcat(buffer, ",");
++		marca = strcpy(marca, c->marca);
++		buffer = strcat(buffer, marca);
++                buffer = strcat(buffer, "\n");
++		fwrite(buffer, strlen(buffer), 1, file);
++	}
++
++	xfree(id);
++	xfree(matricula);
++	xfree(marca);
++	xfree(buffer);
++}
++
+diff --git a/ejercicios/3/src/main.c b/ejercicios/3/src/main.c
+new file mode 100644
+index 0000000..cbccb6c
+--- /dev/null
++++ b/ejercicios/3/src/main.c
+@@ -0,0 +1,153 @@
++#include "../include/concesionario.h"
++#include <getopt.h>
++#include <string.h>
++
++void read_file_to_concesionario(const char *file, struct concesionario *con);
++void write_concesionario_to_file(const char *file,
++				 struct concesionario *con);
++
++int nextAttr(FILE *f, char *cadena)
++{
++	int pos;
++	char ch = fgetc(f);
++
++	for (pos = 0; ch != '\n' && ch > 0 && pos < 50 && ch != ','; pos++){
++                cadena[pos] = ch;
++		ch = fgetc(f);
++        }
++        cadena[pos] = '\0';
++
++	return pos;
++}
++
++int main(int argc, char *argv[])
++{
++	int valor, option_index = 0;
++	struct coche *c1;
++	struct concesionario *con;
++	char path[250];
++	char *salida = "../files/salida.txt";
++
++	uint8_t flag = 0;
++
++	static struct option long_options[] = {
++		{ "file", required_argument, 0, 'f' },
++		{ 0 }
++	};
++
++	while((valor = getopt_long(argc, argv, "f:", long_options,
++				&option_index)) != -1) {
++
++		switch(valor) {
++		case 'f':
++			strncpy(path, optarg, 249);
++			flag |= 1 << 0;
++			break;
++		default:
++			printf("El parametro de entrada es -f/-file "
++				"{archivo}\n");
++			break;
++		}
++	}
++
++	if (flag != 1) {
++		printf("Los parametros de entrada no son correctos\n"
++			"Prueba con -f/-file {nombrearchivo}\n");
++		return 0;
++	}
++
++	con = curso_concesionario_alloc();
++
++	read_file_to_concesionario(path, con);
++
++	write_concesionario_to_file(salida, con);
++
++	curso_concesionario_free(con);
++	return 0;
++}
++
++void read_file_to_concesionario(const char *file, struct concesionario *con)
++{
++	FILE *f;
++	struct coche *c1;
++	char dueno[50], matricula[50], gama[50];
++	char buffer[100];
++	char id[5];
++	int br = 0;
++	int max_coches = 0;
++
++	f = fopen(file, "r");
++	if (f == NULL) {
++		printf("No se pudo leer el archivo %s\n", file);
++		return;
++	}
++
++	br = nextAttr(f, dueno);
++
++	curso_concesionario_attr_set_str(con, CURSO_CONCESIONARIO_ATTR_DUENO,
++                                         dueno);
++
++	while (max_coches < 10) {
++		c1 = curso_coche_alloc();
++
++		br = nextAttr(f, id);
++                curso_coche_attr_set_u32(c1, CURSO_COCHE_ATTR_ID, atoi(id));
++
++		br = nextAttr(f, matricula);
++        	curso_coche_attr_set_str(c1, CURSO_COCHE_ATTR_MATRICULA,
++					matricula);
++
++		br = nextAttr(f, gama);
++        	curso_coche_attr_set_str(c1, CURSO_COCHE_ATTR_MARCA, 
++					gama);
++
++		if (br < 1) {
++			curso_coche_free(c1);
++			break;
++		}
++
++		curso_concesionario_attr_set_coche(con,
++					CURSO_CONCESIONARIO_ATTR_COCHE, c1);	
++
++		max_coches++;
++
++	}
++
++	rewind(f);
++
++	if (fclose(f) == EOF){
++		printf("No se pudo cerrar el archivo %s\n", file);
++		return;
++	}
++}
++
++void write_concesionario_to_file(const char *file, 
++				 struct concesionario *con)
++{
++	FILE *f;
++	struct coche *c;
++	uint16_t pos;
++	char *dueno = (char *)calloc(50, sizeof(char *));
++
++	f = fopen(file, "w+");
++	if (f == NULL) {
++		printf("No se pudo guardar el archivo %s\n", file);
++		xfree(dueno);
++		return;
++	}
++
++	dueno = strcpy(dueno, curso_concesionario_attr_get_str(con,
++                        CURSO_CONCESIONARIO_ATTR_DUENO));
++
++        strcat(dueno, "\n");
++
++	fwrite(dueno, strlen(dueno), 1, f);
++	curso_concesionario_write_coches(con, f);
++
++	if (fclose(f) == EOF){
++                printf("No se pudo cerrar el archivo %s\n", file);
++		xfree(dueno);
++                return;
++        }
++	xfree(dueno);
++}
+diff --git a/ejercicios/3/valgrind/valgrind.log b/ejercicios/3/valgrind/valgrind.log
+new file mode 100644
+index 0000000..a9fc806
+--- /dev/null
++++ b/ejercicios/3/valgrind/valgrind.log
+@@ -0,0 +1,15 @@
++srhypercube@SrHypercube-Lap:~/Git/Programacion-C-Clase3/ejercicios/3/src$ valgrindajierro ./concesionario_readwrite -f ../files/entrada.txt 
++==12127== Memcheck, a memory error detector
++==12127== Copyright (C) 2002-2013, and GNU GPL'd, by Julian Seward et al.
++==12127== Using Valgrind-3.10.0.SVN and LibVEX; rerun with -h for copyright info
++==12127== Command: ./concesionario_readwrite -f ../files/entrada.txt
++==12127== 
++==12127== 
++==12127== HEAP SUMMARY:
++==12127==     in use at exit: 0 bytes in 0 blocks
++==12127==   total heap usage: 19 allocs, 19 frees, 3,635 bytes allocated
++==12127== 
++==12127== All heap blocks were freed -- no leaks are possible
++==12127== 
++==12127== For counts of detected and suppressed errors, rerun with: -v
++==12127== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+-- 
+1.9.1
+

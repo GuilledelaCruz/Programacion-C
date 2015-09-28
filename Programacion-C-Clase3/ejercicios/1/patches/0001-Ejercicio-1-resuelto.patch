@@ -1,0 +1,1291 @@
+From f1c8c6b7c200d7032e3195681059192e030af4ef Mon Sep 17 00:00:00 2001
+From: Guille de la Cruz Dorado <guille.informatica.sevilla@gmail.com>
+Date: Thu, 19 Mar 2015 16:18:33 +0100
+Subject: [PATCH] Ejercicio 1 resuelto
+
+Signed-off-by: Guille de la Cruz Dorado <guille.informatica.sevilla@gmail.com>
+---
+ ejercicios/1/Makefile.am            |   2 +
+ ejercicios/1/configure.ac           |  10 +
+ ejercicios/1/include/gestor_tarea.h |  28 ++
+ ejercicios/1/include/list.h         | 728 ++++++++++++++++++++++++++++++++++++
+ ejercicios/1/include/tarea.h        |  50 +++
+ ejercicios/1/src/Makefile.am        |   2 +
+ ejercicios/1/src/gestor_tarea.c     | 135 +++++++
+ ejercicios/1/src/main.c             |  58 +++
+ ejercicios/1/src/tarea.c            | 165 ++++++++
+ ejercicios/1/valgrind/valgrind.log  |  21 ++
+ 10 files changed, 1199 insertions(+)
+ create mode 100644 ejercicios/1/Makefile.am
+ create mode 100644 ejercicios/1/configure.ac
+ create mode 100644 ejercicios/1/include/gestor_tarea.h
+ create mode 100644 ejercicios/1/include/list.h
+ create mode 100644 ejercicios/1/include/tarea.h
+ create mode 100644 ejercicios/1/src/Makefile.am
+ create mode 100644 ejercicios/1/src/gestor_tarea.c
+ create mode 100644 ejercicios/1/src/main.c
+ create mode 100644 ejercicios/1/src/tarea.c
+ create mode 100644 ejercicios/1/valgrind/valgrind.log
+
+diff --git a/ejercicios/1/Makefile.am b/ejercicios/1/Makefile.am
+new file mode 100644
+index 0000000..dfa49b2
+--- /dev/null
++++ b/ejercicios/1/Makefile.am
+@@ -0,0 +1,2 @@
++AUTOMAKE_OPTIONS = foreign
++SUBDIRS = src
+diff --git a/ejercicios/1/configure.ac b/ejercicios/1/configure.ac
+new file mode 100644
+index 0000000..2c90ad4
+--- /dev/null
++++ b/ejercicios/1/configure.ac
+@@ -0,0 +1,10 @@
++AC_INIT([gestor_tarea], [1.0], [guille.informatica.sevilla@gmail.com])
++
++AM_INIT_AUTOMAKE([-Wall -Werror foreign])
++
++AC_CONFIG_SRCDIR([src/main.c])
++AC_PROG_CC
++AC_CHECK_HEADERS([stdlib.h stdint.h stdbool.h])
++AC_FUNC_MALLOC
++
++AC_OUTPUT(Makefile src/Makefile)
+diff --git a/ejercicios/1/include/gestor_tarea.h b/ejercicios/1/include/gestor_tarea.h
+new file mode 100644
+index 0000000..2ef1ffa
+--- /dev/null
++++ b/ejercicios/1/include/gestor_tarea.h
+@@ -0,0 +1,28 @@
++#include "tarea.h"
++
++enum {
++	GESTOR_TAREA_ATTR_TAREAS = 0,
++	GESTOR_TAREA_ATTR_NUMERO_TAREAS,
++	__GESTOR_TAREA_ATTR_MAX
++};
++
++#define GESTOR_TAREA_ATTR_MAX  (__GESTOR_TAREA_ATTR_MAX - 1)
++
++struct gestor_tarea;
++
++struct gestor_tarea *gestor_tarea_alloc(void);
++void gestor_tarea_free(struct gestor_tarea *g);
++
++void gestor_tarea_attr_unset_tarea(struct gestor_tarea *g, uint16_t pos);
++
++void gestor_tarea_attr_set_tarea(struct gestor_tarea *g, uint16_t attr,
++				 struct tarea *data);
++
++const void *gestor_tarea_attr_get_data(struct gestor_tarea *g, uint16_t attr,
++                                        uint16_t pos);
++const struct tarea *gestor_tarea_attr_get_tarea(struct gestor_tarea *g,
++					 uint16_t attr, uint16_t pos);
++const uint16_t gestor_tarea_attr_get_u16(struct gestor_tarea *g,
++					  uint16_t attr);
++
++int gestor_tarea_snprintf(char *buf, size_t size, struct gestor_tarea *g);
+diff --git a/ejercicios/1/include/list.h b/ejercicios/1/include/list.h
+new file mode 100644
+index 0000000..72c5cc8
+--- /dev/null
++++ b/ejercicios/1/include/list.h
+@@ -0,0 +1,728 @@
++#ifndef _LINUX_LIST_H
++#define _LINUX_LIST_H
++
++#include <stddef.h>
++
++#undef offsetof
++#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
++
++/**
++ * container_of - cast a member of a structure out to the containing structure
++ *
++ * @ptr:	the pointer to the member.
++ * @type:	the type of the container struct this is embedded in.
++ * @member:	the name of the member within the struct.
++ *
++ */
++#define container_of(ptr, type, member) ({			\
++        typeof( ((type *)0)->member ) *__mptr = (ptr);	\
++        (type *)( (char *)__mptr - offsetof(type,member) );})
++
++/*
++ * Check at compile time that something is of a particular type.
++ * Always evaluates to 1 so you may use it easily in comparisons.
++ */
++#define typecheck(type,x) \
++({	type __dummy; \
++	typeof(x) __dummy2; \
++	(void)(&__dummy == &__dummy2); \
++	1; \
++})
++
++#define prefetch(x)		1
++
++/* empty define to make this work in userspace -HW */
++#ifndef smp_wmb
++#define smp_wmb()
++#endif
++
++/*
++ * These are non-NULL pointers that will result in page faults
++ * under normal circumstances, used to verify that nobody uses
++ * non-initialized list entries.
++ */
++#define LIST_POISON1  ((void *) 0x00100100)
++#define LIST_POISON2  ((void *) 0x00200200)
++
++/*
++ * Simple doubly linked list implementation.
++ *
++ * Some of the internal functions ("__xxx") are useful when
++ * manipulating whole lists rather than single entries, as
++ * sometimes we already know the next/prev entries and we can
++ * generate better code by using them directly rather than
++ * using the generic single-entry routines.
++ */
++
++struct list_head {
++	struct list_head *next, *prev;
++};
++
++#define LIST_HEAD_INIT(name) { &(name), &(name) }
++
++#define LIST_HEAD(name) \
++	struct list_head name = LIST_HEAD_INIT(name)
++
++#define INIT_LIST_HEAD(ptr) do { \
++	(ptr)->next = (ptr); (ptr)->prev = (ptr); \
++} while (0)
++
++/*
++ * Insert a new entry between two known consecutive entries.
++ *
++ * This is only for internal list manipulation where we know
++ * the prev/next entries already!
++ */
++static inline void __list_add(struct list_head *new,
++			      struct list_head *prev,
++			      struct list_head *next)
++{
++	next->prev = new;
++	new->next = next;
++	new->prev = prev;
++	prev->next = new;
++}
++
++/**
++ * list_add - add a new entry
++ * @new: new entry to be added
++ * @head: list head to add it after
++ *
++ * Insert a new entry after the specified head.
++ * This is good for implementing stacks.
++ */
++static inline void list_add(struct list_head *new, struct list_head *head)
++{
++	__list_add(new, head, head->next);
++}
++
++/**
++ * list_add_tail - add a new entry
++ * @new: new entry to be added
++ * @head: list head to add it before
++ *
++ * Insert a new entry before the specified head.
++ * This is useful for implementing queues.
++ */
++static inline void list_add_tail(struct list_head *new, struct list_head *head)
++{
++	__list_add(new, head->prev, head);
++}
++
++/*
++ * Insert a new entry between two known consecutive entries.
++ *
++ * This is only for internal list manipulation where we know
++ * the prev/next entries already!
++ */
++static inline void __list_add_rcu(struct list_head * new,
++		struct list_head * prev, struct list_head * next)
++{
++	new->next = next;
++	new->prev = prev;
++	smp_wmb();
++	next->prev = new;
++	prev->next = new;
++}
++
++/**
++ * list_add_rcu - add a new entry to rcu-protected list
++ * @new: new entry to be added
++ * @head: list head to add it after
++ *
++ * Insert a new entry after the specified head.
++ * This is good for implementing stacks.
++ *
++ * The caller must take whatever precautions are necessary
++ * (such as holding appropriate locks) to avoid racing
++ * with another list-mutation primitive, such as list_add_rcu()
++ * or list_del_rcu(), running on this same list.
++ * However, it is perfectly legal to run concurrently with
++ * the _rcu list-traversal primitives, such as
++ * list_for_each_entry_rcu().
++ */
++static inline void list_add_rcu(struct list_head *new, struct list_head *head)
++{
++	__list_add_rcu(new, head, head->next);
++}
++
++/**
++ * list_add_tail_rcu - add a new entry to rcu-protected list
++ * @new: new entry to be added
++ * @head: list head to add it before
++ *
++ * Insert a new entry before the specified head.
++ * This is useful for implementing queues.
++ *
++ * The caller must take whatever precautions are necessary
++ * (such as holding appropriate locks) to avoid racing
++ * with another list-mutation primitive, such as list_add_tail_rcu()
++ * or list_del_rcu(), running on this same list.
++ * However, it is perfectly legal to run concurrently with
++ * the _rcu list-traversal primitives, such as
++ * list_for_each_entry_rcu().
++ */
++static inline void list_add_tail_rcu(struct list_head *new,
++					struct list_head *head)
++{
++	__list_add_rcu(new, head->prev, head);
++}
++
++/*
++ * Delete a list entry by making the prev/next entries
++ * point to each other.
++ *
++ * This is only for internal list manipulation where we know
++ * the prev/next entries already!
++ */
++static inline void __list_del(struct list_head * prev, struct list_head * next)
++{
++	next->prev = prev;
++	prev->next = next;
++}
++
++/**
++ * list_del - deletes entry from list.
++ * @entry: the element to delete from the list.
++ * Note: list_empty on entry does not return true after this, the entry is
++ * in an undefined state.
++ */
++static inline void list_del(struct list_head *entry)
++{
++	__list_del(entry->prev, entry->next);
++	entry->next = LIST_POISON1;
++	entry->prev = LIST_POISON2;
++}
++
++/**
++ * list_del_rcu - deletes entry from list without re-initialization
++ * @entry: the element to delete from the list.
++ *
++ * Note: list_empty on entry does not return true after this,
++ * the entry is in an undefined state. It is useful for RCU based
++ * lockfree traversal.
++ *
++ * In particular, it means that we can not poison the forward
++ * pointers that may still be used for walking the list.
++ *
++ * The caller must take whatever precautions are necessary
++ * (such as holding appropriate locks) to avoid racing
++ * with another list-mutation primitive, such as list_del_rcu()
++ * or list_add_rcu(), running on this same list.
++ * However, it is perfectly legal to run concurrently with
++ * the _rcu list-traversal primitives, such as
++ * list_for_each_entry_rcu().
++ *
++ * Note that the caller is not permitted to immediately free
++ * the newly deleted entry.  Instead, either synchronize_kernel()
++ * or call_rcu() must be used to defer freeing until an RCU
++ * grace period has elapsed.
++ */
++static inline void list_del_rcu(struct list_head *entry)
++{
++	__list_del(entry->prev, entry->next);
++	entry->prev = LIST_POISON2;
++}
++
++/**
++ * list_del_init - deletes entry from list and reinitialize it.
++ * @entry: the element to delete from the list.
++ */
++static inline void list_del_init(struct list_head *entry)
++{
++	__list_del(entry->prev, entry->next);
++	INIT_LIST_HEAD(entry);
++}
++
++/**
++ * list_move - delete from one list and add as another's head
++ * @list: the entry to move
++ * @head: the head that will precede our entry
++ */
++static inline void list_move(struct list_head *list, struct list_head *head)
++{
++        __list_del(list->prev, list->next);
++        list_add(list, head);
++}
++
++/**
++ * list_move_tail - delete from one list and add as another's tail
++ * @list: the entry to move
++ * @head: the head that will follow our entry
++ */
++static inline void list_move_tail(struct list_head *list,
++				  struct list_head *head)
++{
++        __list_del(list->prev, list->next);
++        list_add_tail(list, head);
++}
++
++/**
++ * list_empty - tests whether a list is empty
++ * @head: the list to test.
++ */
++static inline int list_empty(const struct list_head *head)
++{
++	return head->next == head;
++}
++
++/**
++ * list_empty_careful - tests whether a list is
++ * empty _and_ checks that no other CPU might be
++ * in the process of still modifying either member
++ *
++ * NOTE: using list_empty_careful() without synchronization
++ * can only be safe if the only activity that can happen
++ * to the list entry is list_del_init(). Eg. it cannot be used
++ * if another CPU could re-list_add() it.
++ *
++ * @head: the list to test.
++ */
++static inline int list_empty_careful(const struct list_head *head)
++{
++	struct list_head *next = head->next;
++	return (next == head) && (next == head->prev);
++}
++
++static inline void __list_splice(struct list_head *list,
++				 struct list_head *head)
++{
++	struct list_head *first = list->next;
++	struct list_head *last = list->prev;
++	struct list_head *at = head->next;
++
++	first->prev = head;
++	head->next = first;
++
++	last->next = at;
++	at->prev = last;
++}
++
++/**
++ * list_splice - join two lists
++ * @list: the new list to add.
++ * @head: the place to add it in the first list.
++ */
++static inline void list_splice(struct list_head *list, struct list_head *head)
++{
++	if (!list_empty(list))
++		__list_splice(list, head);
++}
++
++/**
++ * list_splice_init - join two lists and reinitialise the emptied list.
++ * @list: the new list to add.
++ * @head: the place to add it in the first list.
++ *
++ * The list at @list is reinitialised
++ */
++static inline void list_splice_init(struct list_head *list,
++				    struct list_head *head)
++{
++	if (!list_empty(list)) {
++		__list_splice(list, head);
++		INIT_LIST_HEAD(list);
++	}
++}
++
++/**
++ * list_entry - get the struct for this entry
++ * @ptr:	the &struct list_head pointer.
++ * @type:	the type of the struct this is embedded in.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_entry(ptr, type, member) \
++	container_of(ptr, type, member)
++
++/**
++ * list_for_each	-	iterate over a list
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ */
++#define list_for_each(pos, head) \
++	for (pos = (head)->next, prefetch(pos->next); pos != (head); \
++        	pos = pos->next, prefetch(pos->next))
++
++/**
++ * __list_for_each	-	iterate over a list
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ *
++ * This variant differs from list_for_each() in that it's the
++ * simplest possible list iteration code, no prefetching is done.
++ * Use this for code that knows the list to be very short (empty
++ * or 1 entry) most of the time.
++ */
++#define __list_for_each(pos, head) \
++	for (pos = (head)->next; pos != (head); pos = pos->next)
++
++/**
++ * list_for_each_prev	-	iterate over a list backwards
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ */
++#define list_for_each_prev(pos, head) \
++	for (pos = (head)->prev, prefetch(pos->prev); pos != (head); \
++        	pos = pos->prev, prefetch(pos->prev))
++
++/**
++ * list_for_each_safe	-	iterate over a list safe against removal of list entry
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @n:		another &struct list_head to use as temporary storage
++ * @head:	the head for your list.
++ */
++#define list_for_each_safe(pos, n, head) \
++	for (pos = (head)->next, n = pos->next; pos != (head); \
++		pos = n, n = pos->next)
++
++/**
++ * list_for_each_entry	-	iterate over list of given type
++ * @pos:	the type * to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry(pos, head, member)				\
++	for (pos = list_entry((head)->next, typeof(*pos), member),	\
++		     prefetch(pos->member.next);			\
++	     &pos->member != (head); 					\
++	     pos = list_entry(pos->member.next, typeof(*pos), member),	\
++		     prefetch(pos->member.next))
++
++/**
++ * list_for_each_entry_reverse - iterate backwards over list of given type.
++ * @pos:	the type * to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry_reverse(pos, head, member)			\
++	for (pos = list_entry((head)->prev, typeof(*pos), member),	\
++		     prefetch(pos->member.prev);			\
++	     &pos->member != (head); 					\
++	     pos = list_entry(pos->member.prev, typeof(*pos), member),	\
++		     prefetch(pos->member.prev))
++
++/**
++ * list_prepare_entry - prepare a pos entry for use as a start point in
++ *			list_for_each_entry_continue
++ * @pos:	the type * to use as a start point
++ * @head:	the head of the list
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_prepare_entry(pos, head, member) \
++	((pos) ? : list_entry(head, typeof(*pos), member))
++
++/**
++ * list_for_each_entry_continue -	iterate over list of given type
++ *			continuing after existing point
++ * @pos:	the type * to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry_continue(pos, head, member) 		\
++	for (pos = list_entry(pos->member.next, typeof(*pos), member),	\
++		     prefetch(pos->member.next);			\
++	     &pos->member != (head);					\
++	     pos = list_entry(pos->member.next, typeof(*pos), member),	\
++		     prefetch(pos->member.next))
++
++/**
++ * list_for_each_entry_safe - iterate over list of given type safe against removal of list entry
++ * @pos:	the type * to use as a loop counter.
++ * @n:		another type * to use as temporary storage
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ */
++#define list_for_each_entry_safe(pos, n, head, member)			\
++	for (pos = list_entry((head)->next, typeof(*pos), member),	\
++		n = list_entry(pos->member.next, typeof(*pos), member);	\
++	     &pos->member != (head); 					\
++	     pos = n, n = list_entry(n->member.next, typeof(*n), member))
++
++/**
++ * list_for_each_rcu	-	iterate over an rcu-protected list
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ *
++ * This list-traversal primitive may safely run concurrently with
++ * the _rcu list-mutation primitives such as list_add_rcu()
++ * as long as the traversal is guarded by rcu_read_lock().
++ */
++#define list_for_each_rcu(pos, head) \
++	for (pos = (head)->next, prefetch(pos->next); pos != (head); \
++        	pos = pos->next, ({ smp_read_barrier_depends(); 0;}), prefetch(pos->next))
++
++#define __list_for_each_rcu(pos, head) \
++	for (pos = (head)->next; pos != (head); \
++        	pos = pos->next, ({ smp_read_barrier_depends(); 0;}))
++
++/**
++ * list_for_each_safe_rcu	-	iterate over an rcu-protected list safe
++ *					against removal of list entry
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @n:		another &struct list_head to use as temporary storage
++ * @head:	the head for your list.
++ *
++ * This list-traversal primitive may safely run concurrently with
++ * the _rcu list-mutation primitives such as list_add_rcu()
++ * as long as the traversal is guarded by rcu_read_lock().
++ */
++#define list_for_each_safe_rcu(pos, n, head) \
++	for (pos = (head)->next, n = pos->next; pos != (head); \
++		pos = n, ({ smp_read_barrier_depends(); 0;}), n = pos->next)
++
++/**
++ * list_for_each_entry_rcu	-	iterate over rcu list of given type
++ * @pos:	the type * to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the list_struct within the struct.
++ *
++ * This list-traversal primitive may safely run concurrently with
++ * the _rcu list-mutation primitives such as list_add_rcu()
++ * as long as the traversal is guarded by rcu_read_lock().
++ */
++#define list_for_each_entry_rcu(pos, head, member)			\
++	for (pos = list_entry((head)->next, typeof(*pos), member),	\
++		     prefetch(pos->member.next);			\
++	     &pos->member != (head); 					\
++	     pos = list_entry(pos->member.next, typeof(*pos), member),	\
++		     ({ smp_read_barrier_depends(); 0;}),		\
++		     prefetch(pos->member.next))
++
++
++/**
++ * list_for_each_continue_rcu	-	iterate over an rcu-protected list
++ *			continuing after existing point.
++ * @pos:	the &struct list_head to use as a loop counter.
++ * @head:	the head for your list.
++ *
++ * This list-traversal primitive may safely run concurrently with
++ * the _rcu list-mutation primitives such as list_add_rcu()
++ * as long as the traversal is guarded by rcu_read_lock().
++ */
++#define list_for_each_continue_rcu(pos, head) \
++	for ((pos) = (pos)->next, prefetch((pos)->next); (pos) != (head); \
++        	(pos) = (pos)->next, ({ smp_read_barrier_depends(); 0;}), prefetch((pos)->next))
++
++/*
++ * Double linked lists with a single pointer list head.
++ * Mostly useful for hash tables where the two pointer list head is
++ * too wasteful.
++ * You lose the ability to access the tail in O(1).
++ */
++
++struct hlist_head {
++	struct hlist_node *first;
++};
++
++struct hlist_node {
++	struct hlist_node *next, **pprev;
++};
++
++#define HLIST_HEAD_INIT { .first = NULL }
++#define HLIST_HEAD(name) struct hlist_head name = {  .first = NULL }
++#define INIT_HLIST_HEAD(ptr) ((ptr)->first = NULL)
++#define INIT_HLIST_NODE(ptr) ((ptr)->next = NULL, (ptr)->pprev = NULL)
++
++static inline int hlist_unhashed(const struct hlist_node *h)
++{
++	return !h->pprev;
++}
++
++static inline int hlist_empty(const struct hlist_head *h)
++{
++	return !h->first;
++}
++
++static inline void __hlist_del(struct hlist_node *n)
++{
++	struct hlist_node *next = n->next;
++	struct hlist_node **pprev = n->pprev;
++	*pprev = next;
++	if (next)
++		next->pprev = pprev;
++}
++
++static inline void hlist_del(struct hlist_node *n)
++{
++	__hlist_del(n);
++	n->next = LIST_POISON1;
++	n->pprev = LIST_POISON2;
++}
++
++/**
++ * hlist_del_rcu - deletes entry from hash list without re-initialization
++ * @n: the element to delete from the hash list.
++ *
++ * Note: list_unhashed() on entry does not return true after this,
++ * the entry is in an undefined state. It is useful for RCU based
++ * lockfree traversal.
++ *
++ * In particular, it means that we can not poison the forward
++ * pointers that may still be used for walking the hash list.
++ *
++ * The caller must take whatever precautions are necessary
++ * (such as holding appropriate locks) to avoid racing
++ * with another list-mutation primitive, such as hlist_add_head_rcu()
++ * or hlist_del_rcu(), running on this same list.
++ * However, it is perfectly legal to run concurrently with
++ * the _rcu list-traversal primitives, such as
++ * hlist_for_each_entry().
++ */
++static inline void hlist_del_rcu(struct hlist_node *n)
++{
++	__hlist_del(n);
++	n->pprev = LIST_POISON2;
++}
++
++static inline void hlist_del_init(struct hlist_node *n)
++{
++	if (n->pprev)  {
++		__hlist_del(n);
++		INIT_HLIST_NODE(n);
++	}
++}
++
++#define hlist_del_rcu_init hlist_del_init
++
++static inline void hlist_add_head(struct hlist_node *n, struct hlist_head *h)
++{
++	struct hlist_node *first = h->first;
++	n->next = first;
++	if (first)
++		first->pprev = &n->next;
++	h->first = n;
++	n->pprev = &h->first;
++}
++
++
++/**
++ * hlist_add_head_rcu - adds the specified element to the specified hlist,
++ * while permitting racing traversals.
++ * @n: the element to add to the hash list.
++ * @h: the list to add to.
++ *
++ * The caller must take whatever precautions are necessary
++ * (such as holding appropriate locks) to avoid racing
++ * with another list-mutation primitive, such as hlist_add_head_rcu()
++ * or hlist_del_rcu(), running on this same list.
++ * However, it is perfectly legal to run concurrently with
++ * the _rcu list-traversal primitives, such as
++ * hlist_for_each_entry(), but only if smp_read_barrier_depends()
++ * is used to prevent memory-consistency problems on Alpha CPUs.
++ * Regardless of the type of CPU, the list-traversal primitive
++ * must be guarded by rcu_read_lock().
++ *
++ * OK, so why don't we have an hlist_for_each_entry_rcu()???
++ */
++static inline void hlist_add_head_rcu(struct hlist_node *n,
++					struct hlist_head *h)
++{
++	struct hlist_node *first = h->first;
++	n->next = first;
++	n->pprev = &h->first;
++	smp_wmb();
++	if (first)
++		first->pprev = &n->next;
++	h->first = n;
++}
++
++/* next must be != NULL */
++static inline void hlist_add_before(struct hlist_node *n,
++					struct hlist_node *next)
++{
++	n->pprev = next->pprev;
++	n->next = next;
++	next->pprev = &n->next;
++	*(n->pprev) = n;
++}
++
++static inline void hlist_add_after(struct hlist_node *n,
++					struct hlist_node *next)
++{
++	next->next = n->next;
++	n->next = next;
++	next->pprev = &n->next;
++
++	if(next->next)
++		next->next->pprev  = &next->next;
++}
++
++#define hlist_entry(ptr, type, member) container_of(ptr,type,member)
++
++#define hlist_for_each(pos, head) \
++	for (pos = (head)->first; pos && ({ prefetch(pos->next); 1; }); \
++	     pos = pos->next)
++
++#define hlist_for_each_safe(pos, n, head) \
++	for (pos = (head)->first; pos && ({ n = pos->next; 1; }); \
++	     pos = n)
++
++/**
++ * hlist_for_each_entry	- iterate over list of given type
++ * @tpos:	the type * to use as a loop counter.
++ * @pos:	the &struct hlist_node to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the hlist_node within the struct.
++ */
++#define hlist_for_each_entry(tpos, pos, head, member)			 \
++	for (pos = (head)->first;					 \
++	     pos && ({ prefetch(pos->next); 1;}) &&			 \
++		({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
++	     pos = pos->next)
++
++/**
++ * hlist_for_each_entry_continue - iterate over a hlist continuing after existing point
++ * @tpos:	the type * to use as a loop counter.
++ * @pos:	the &struct hlist_node to use as a loop counter.
++ * @member:	the name of the hlist_node within the struct.
++ */
++#define hlist_for_each_entry_continue(tpos, pos, member)		 \
++	for (pos = (pos)->next;						 \
++	     pos && ({ prefetch(pos->next); 1;}) &&			 \
++		({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
++	     pos = pos->next)
++
++/**
++ * hlist_for_each_entry_from - iterate over a hlist continuing from existing point
++ * @tpos:	the type * to use as a loop counter.
++ * @pos:	the &struct hlist_node to use as a loop counter.
++ * @member:	the name of the hlist_node within the struct.
++ */
++#define hlist_for_each_entry_from(tpos, pos, member)			 \
++	for (; pos && ({ prefetch(pos->next); 1;}) &&			 \
++		({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
++	     pos = pos->next)
++
++/**
++ * hlist_for_each_entry_safe - iterate over list of given type safe against removal of list entry
++ * @tpos:	the type * to use as a loop counter.
++ * @pos:	the &struct hlist_node to use as a loop counter.
++ * @n:		another &struct hlist_node to use as temporary storage
++ * @head:	the head for your list.
++ * @member:	the name of the hlist_node within the struct.
++ */
++#define hlist_for_each_entry_safe(tpos, pos, n, head, member) 		 \
++	for (pos = (head)->first;					 \
++	     pos && ({ n = pos->next; 1; }) && 				 \
++		({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
++	     pos = n)
++
++/**
++ * hlist_for_each_entry_rcu - iterate over rcu list of given type
++ * @pos:	the type * to use as a loop counter.
++ * @pos:	the &struct hlist_node to use as a loop counter.
++ * @head:	the head for your list.
++ * @member:	the name of the hlist_node within the struct.
++ *
++ * This list-traversal primitive may safely run concurrently with
++ * the _rcu list-mutation primitives such as hlist_add_rcu()
++ * as long as the traversal is guarded by rcu_read_lock().
++ */
++#define hlist_for_each_entry_rcu(tpos, pos, head, member)		 \
++	for (pos = (head)->first;					 \
++	     pos && ({ prefetch(pos->next); 1;}) &&			 \
++		({ tpos = hlist_entry(pos, typeof(*tpos), member); 1;}); \
++	     pos = pos->next, ({ smp_read_barrier_depends(); 0; }) )
++
++#endif
++
+diff --git a/ejercicios/1/include/tarea.h b/ejercicios/1/include/tarea.h
+new file mode 100644
+index 0000000..d021f20
+--- /dev/null
++++ b/ejercicios/1/include/tarea.h
+@@ -0,0 +1,50 @@
++#include <stdio.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <stdbool.h>
++#include "list.h"
++
++enum {
++	TAREA_ATTR_NOMBRE = 0,
++	TAREA_ATTR_DESCRIPCION,
++	TAREA_ATTR_ID,
++	TAREA_ATTR_USUARIO,
++	TAREA_ATTR_PRIORIDAD,
++	__TAREA_ATTR_MAX
++};
++
++#define TAREA_ATTR_MAX	(__TAREA_ATTR_MAX - 1)
++
++#define xfree(ptr)	free((void *) ptr);
++
++struct tarea {
++	struct list_head	head;
++        const char      	*nombre;
++        const char      	*descripcion;
++        uint32_t        	id;
++        const char      	*usuario;
++        uint16_t        	prioridad;
++
++        uint32_t        	flags;
++};
++
++struct tarea *tarea_alloc(void);
++void tarea_free(struct tarea *);
++
++bool tarea_attr_is_set(const struct tarea *t, uint16_t attr);
++
++void tarea_attr_unset(struct tarea *t, uint16_t attr);
++
++void tarea_attr_set_data(struct tarea *t, uint16_t attr, const void *data,
++                               uint32_t data_len);
++void tarea_attr_set_u32(struct tarea *t, uint16_t attr, uint32_t data);
++void tarea_attr_set_u16(struct tarea *t, uint16_t attr, uint16_t data);
++void tarea_attr_set_str(struct tarea *t, uint16_t attr, const char *data);
++
++const void *tarea_attr_get_data(struct tarea *t, uint16_t attr);
++uint32_t tarea_attr_get_u32(struct tarea *t, uint16_t attr);
++uint16_t tarea_attr_get_u16(struct tarea *t, uint16_t attr);
++const char *tarea_attr_get_str(struct tarea *t, uint16_t attr);
++
++
++int tarea_snprintf(char *buf, size_t size, struct tarea *t);
+diff --git a/ejercicios/1/src/Makefile.am b/ejercicios/1/src/Makefile.am
+new file mode 100644
+index 0000000..db14f92
+--- /dev/null
++++ b/ejercicios/1/src/Makefile.am
+@@ -0,0 +1,2 @@
++bin_PROGRAMS = gestor_tarea
++gestor_tarea_SOURCES = main.c tarea.c gestor_tarea.c
+diff --git a/ejercicios/1/src/gestor_tarea.c b/ejercicios/1/src/gestor_tarea.c
+new file mode 100644
+index 0000000..11bc351
+--- /dev/null
++++ b/ejercicios/1/src/gestor_tarea.c
+@@ -0,0 +1,135 @@
++#include "../include/gestor_tarea.h"
++#include <string.h>
++
++struct gestor_tarea {
++        struct list_head      tareas;
++	uint16_t	numero_tareas;
++
++        uint32_t	flags;
++};
++
++struct gestor_tarea *gestor_tarea_alloc(void)
++{
++	struct gestor_tarea *g;
++	g = (struct gestor_tarea *)malloc(sizeof(struct gestor_tarea));
++
++	if (g == NULL)
++		return NULL;
++
++	INIT_LIST_HEAD(&g->tareas);
++	g->numero_tareas = 0;
++	g->flags = 0;
++
++        return g;
++}
++
++void gestor_tarea_free(struct gestor_tarea *g)
++{
++	struct tarea *t, *tmp;
++
++	list_for_each_entry_safe(t, tmp, &g->tareas, head) {
++                list_del(&t->head);
++                tarea_free(t);
++        }
++
++	xfree(g);
++}
++
++void gestor_tarea_attr_unset_tarea(struct gestor_tarea *g, uint16_t pos)
++{
++	int i = 0;
++	struct tarea *t, *tmp;
++
++        if (pos < 0 || pos >= g->numero_tareas)
++                return;
++
++	list_for_each_entry_safe(t, tmp, &g->tareas, head) {
++		if (i == pos) {
++			list_del(&t->head);
++			tarea_free(t);
++			break;
++		}
++
++		i++;
++	}
++
++        g->numero_tareas--;
++
++	if (g->numero_tareas == 0) {
++        	g->flags &= ~(1 << GESTOR_TAREA_ATTR_TAREAS);
++		g->flags &= ~(1 << GESTOR_TAREA_ATTR_NUMERO_TAREAS);
++	}
++}
++
++void gestor_tarea_attr_set_tarea(struct gestor_tarea *g, uint16_t attr,
++				 struct tarea *data)
++{
++	struct tarea *t;
++
++	if (attr != GESTOR_TAREA_ATTR_TAREAS)
++                return;
++
++	if (g->numero_tareas > 9) {
++               printf("El gestor está al máximo de tareas\n");
++               return;
++        }
++
++	t = (struct tarea *)data;
++        list_add(&t->head, &g->tareas);
++        g->numero_tareas++;
++
++        g->flags |= (1 << GESTOR_TAREA_ATTR_TAREAS);
++	g->flags |= (1 << GESTOR_TAREA_ATTR_NUMERO_TAREAS);
++}
++
++const void *gestor_tarea_attr_get_data(struct gestor_tarea *g, uint16_t attr,
++					uint16_t pos)
++{
++	int i = 0;
++	struct tarea *t;
++
++	if (!(g->flags & (1 << attr)))
++                return NULL;
++
++        switch(attr) {
++        case GESTOR_TAREA_ATTR_TAREAS:
++                list_for_each_entry(t, &g->tareas, head) {
++                        if (i == pos)
++                                break;
++
++                        i++;
++                }
++
++                return t;
++
++        case GESTOR_TAREA_ATTR_NUMERO_TAREAS:
++                return &g->numero_tareas;
++        }
++        return NULL;
++}
++
++const struct tarea *gestor_tarea_attr_get_tarea(struct gestor_tarea *g,
++						uint16_t attr, uint16_t pos)
++{
++        return (struct tarea *)gestor_tarea_attr_get_data(g, attr, pos);
++}
++
++const uint16_t gestor_tarea_attr_get_u16(struct gestor_tarea *g,
++					uint16_t attr)
++{
++	const void * ret = gestor_tarea_attr_get_data(g, attr, 0);
++	return ret == NULL ? 0 : *((uint16_t *)ret);
++}
++
++int gestor_tarea_snprintf(char *buf, size_t size, struct gestor_tarea *g)
++{
++	int ret = 0;
++	struct tarea *t;
++
++	list_for_each_entry(t, &g->tareas, head) {
++                ret += tarea_snprintf(buf + ret, size - ret, t);
++                ret += snprintf(buf + ret, size - ret, "\n");
++        }
++
++	return ret;
++}
+diff --git a/ejercicios/1/src/main.c b/ejercicios/1/src/main.c
+new file mode 100644
+index 0000000..ac4ed64
+--- /dev/null
++++ b/ejercicios/1/src/main.c
+@@ -0,0 +1,58 @@
++#include "../include/gestor_tarea.h"
++#include <assert.h>
++
++int main(void)
++{
++	struct tarea *t1, *t2;
++	struct gestor_tarea *g;
++	char info[5000];
++
++	t1 = tarea_alloc();
++
++	tarea_attr_set_str(t1, TAREA_ATTR_NOMBRE, "1 - Tarea");
++        tarea_attr_set_str(t1, TAREA_ATTR_DESCRIPCION,
++                                "Descripción del ejercicio 2 (tarea 1).");
++        tarea_attr_set_u32(t1, TAREA_ATTR_ID, 1972);
++        tarea_attr_set_str(t1, TAREA_ATTR_USUARIO,
++                                "Guillermo de la Cruz Dorado");
++        tarea_attr_set_u16(t1, TAREA_ATTR_PRIORIDAD, 10);
++
++	t2 = tarea_alloc();
++
++	tarea_attr_set_str(t2, TAREA_ATTR_NOMBRE, "2 - Tarea");
++        tarea_attr_set_str(t2, TAREA_ATTR_DESCRIPCION,
++                                "Prueba para el ejercicio 2 (tarea 2).");
++        tarea_attr_set_u32(t2, TAREA_ATTR_ID, 1978);
++        tarea_attr_set_str(t2, TAREA_ATTR_USUARIO,
++                                "Guillermo de la Cruz Dorado");
++        tarea_attr_set_u16(t2, TAREA_ATTR_PRIORIDAD, 0);
++
++	g = gestor_tarea_alloc();
++
++	gestor_tarea_attr_set_tarea(g, GESTOR_TAREA_ATTR_TAREAS, t1);
++	gestor_tarea_attr_set_tarea(g, GESTOR_TAREA_ATTR_TAREAS, t2);
++
++	gestor_tarea_snprintf(info, sizeof(info), g);
++	printf("%s\n", info);
++
++	gestor_tarea_attr_unset_tarea(g, 3);
++	assert(gestor_tarea_attr_get_u16(g, GESTOR_TAREA_ATTR_NUMERO_TAREAS)
++		== 2);
++
++	gestor_tarea_attr_unset_tarea(g, 0);
++	assert(gestor_tarea_attr_get_u16(g, GESTOR_TAREA_ATTR_NUMERO_TAREAS)
++                == 1);
++
++	gestor_tarea_snprintf(info, sizeof(info), g);
++        printf("%s", info);
++
++	gestor_tarea_attr_unset_tarea(g, 0);
++	assert(gestor_tarea_attr_get_u16(g, GESTOR_TAREA_ATTR_NUMERO_TAREAS)
++                == 0);
++	assert(gestor_tarea_attr_get_tarea(g, GESTOR_TAREA_ATTR_TAREAS, 0)
++		== NULL);
++
++	gestor_tarea_free(g);
++
++	return 0;
++}
+diff --git a/ejercicios/1/src/tarea.c b/ejercicios/1/src/tarea.c
+new file mode 100644
+index 0000000..b10e768
+--- /dev/null
++++ b/ejercicios/1/src/tarea.c
+@@ -0,0 +1,165 @@
++#include "../include/tarea.h"
++#include <string.h>
++
++struct tarea *tarea_alloc(void)
++{
++	struct tarea *t = (struct tarea *)malloc(sizeof(struct tarea));
++
++	if (t == NULL)
++		return NULL;
++
++	t->nombre = NULL;
++	t->descripcion = NULL;
++	t->id = 0;
++	t->usuario = NULL;
++	t->prioridad = 20;
++	t->flags = 0;
++
++	return t;
++}
++
++void tarea_free(struct tarea *t)
++{
++	if (t->flags & (1 << TAREA_ATTR_NOMBRE))
++		xfree(t->nombre);
++
++	if (t->flags & (1 << TAREA_ATTR_DESCRIPCION))
++		xfree(t->descripcion);
++
++	if (t->flags & (1 << TAREA_ATTR_USUARIO))
++		xfree(t->usuario);
++
++	xfree(t);
++}
++
++bool tarea_attr_is_set(const struct tarea *t, uint16_t attr)
++{
++	return t->flags & (1 << attr);
++}
++
++void tarea_attr_unset(struct tarea *t, uint16_t attr)
++{
++	if (!(t->flags & (1 << attr)))
++		return;
++
++	switch(attr) {
++	case TAREA_ATTR_NOMBRE:
++		if (t->nombre){
++			xfree(t->nombre);
++			t->nombre = NULL;
++		}
++		break;
++	case TAREA_ATTR_DESCRIPCION:
++		if (t->descripcion){
++			xfree(t->descripcion);
++			t->descripcion = NULL;
++		}
++		break;
++	case TAREA_ATTR_ID:
++		break;
++	case TAREA_ATTR_USUARIO:
++		if (t->usuario){
++			xfree(t->usuario);
++			t->usuario = NULL;
++		}
++		break;
++	case TAREA_ATTR_PRIORIDAD:
++		break;
++	}
++
++	t->flags &= ~(1 << attr);
++}
++
++void tarea_attr_set_data(struct tarea *t, uint16_t attr, const void *data,
++                               uint32_t data_len)
++{
++	if (attr > TAREA_ATTR_MAX)
++		return;
++
++	switch(attr) {
++	case TAREA_ATTR_NOMBRE:
++		if (t->nombre)
++			xfree(t->nombre);
++
++		t->nombre = strdup(data);
++		break;
++	case TAREA_ATTR_DESCRIPCION:
++		if (t->descripcion)
++                        xfree(t->descripcion);
++
++                t->descripcion = strdup(data);
++                break;
++	case TAREA_ATTR_ID:
++		t->id = *((uint32_t *)data);
++		break;
++	case TAREA_ATTR_USUARIO:
++		if (t->usuario)
++                        xfree(t->usuario);
++
++                t->usuario = strdup(data);
++                break;
++	case TAREA_ATTR_PRIORIDAD:
++		t->prioridad = *((uint16_t *)data);
++		break;
++	}
++
++	t->flags |= (1 << attr);
++}
++
++void tarea_attr_set_u32(struct tarea *t, uint16_t attr, uint32_t data)
++{
++	tarea_attr_set_data(t, attr, &data, sizeof(uint32_t));
++}
++
++void tarea_attr_set_u16(struct tarea *t, uint16_t attr, uint16_t data)
++{
++	tarea_attr_set_data(t, attr, &data, sizeof(uint16_t));
++}
++void tarea_attr_set_str(struct tarea *t, uint16_t attr, const char *data)
++{
++	tarea_attr_set_data(t, attr, data, 0);
++}
++
++const void *tarea_attr_get_data(struct tarea *t, uint16_t attr)
++{
++	if (!(t->flags & (1 << attr)))
++		return NULL;
++
++	switch(attr) {
++	case TAREA_ATTR_NOMBRE:
++		return t->nombre;
++	case TAREA_ATTR_DESCRIPCION:
++		return t->descripcion;
++	case TAREA_ATTR_ID:
++		return &t->id;
++	case TAREA_ATTR_USUARIO:
++		return t->usuario;
++	case TAREA_ATTR_PRIORIDAD:
++		return &t->prioridad;
++	}
++	return NULL;
++}
++
++uint32_t tarea_attr_get_u32(struct tarea *t, uint16_t attr)
++{
++	const void * ret = tarea_attr_get_data(t, attr);
++	return ret == NULL ? 0 : *((uint32_t *)ret);
++}
++
++uint16_t tarea_attr_get_u16(struct tarea *t, uint16_t attr)
++{
++	const void * ret = tarea_attr_get_data(t, attr);
++	return ret == NULL ? 0 : *((uint16_t *)ret);
++}
++
++const char *tarea_attr_get_str(struct tarea *t, uint16_t attr)
++{
++	return tarea_attr_get_data(t, attr);
++}
++
++int tarea_snprintf(char *buf, size_t size, struct tarea *t)
++{
++	return snprintf(buf, size, "La tarea número %d está enviada por %s."
++			"Se llama %s y la descripción es %s\n",
++			t->id, t->usuario, t->nombre, t->descripcion);
++}
+diff --git a/ejercicios/1/valgrind/valgrind.log b/ejercicios/1/valgrind/valgrind.log
+new file mode 100644
+index 0000000..e34f70d
+--- /dev/null
++++ b/ejercicios/1/valgrind/valgrind.log
+@@ -0,0 +1,21 @@
++==9033== Memcheck, a memory error detector
++==9033== Copyright (C) 2002-2013, and GNU GPL'd, by Julian Seward et al.
++==9033== Using Valgrind-3.10.0.SVN and LibVEX; rerun with -h for copyright info
++==9033== Command: ./gestor_tarea
++==9033== 
++La tarea número 1978 está enviada por Guillermo de la Cruz Dorado.Se llama 2 - Tarea y la descripción es Prueba para el ejercicio 2 (tarea 2).
++
++La tarea número 1972 está enviada por Guillermo de la Cruz Dorado.Se llama 1 - Tarea y la descripción es Descripción del ejercicio 2 (tarea 1).
++
++
++La tarea número 1972 está enviada por Guillermo de la Cruz Dorado.Se llama 1 - Tarea y la descripción es Descripción del ejercicio 2 (tarea 1).
++
++==9033== 
++==9033== HEAP SUMMARY:
++==9033==     in use at exit: 0 bytes in 0 blocks
++==9033==   total heap usage: 9 allocs, 9 frees, 290 bytes allocated
++==9033== 
++==9033== All heap blocks were freed -- no leaks are possible
++==9033== 
++==9033== For counts of detected and suppressed errors, rerun with: -v
++==9033== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+-- 
+1.9.1
+
